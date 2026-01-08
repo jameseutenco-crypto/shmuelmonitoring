@@ -1,11 +1,10 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { CategoryRestockCard } from '@/components/dashboard/CategoryRestockCard';
-import { InventoryTable } from '@/components/dashboard/InventoryTable';
-import { mockProducts, mockStats } from '@/data/mockInventory';
-import { Package, AlertTriangle, PackageX, DollarSign, ShoppingCart } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { mockProducts, mockStats, mockSalesData, mockPurchaseOrders } from '@/data/mockInventory';
+import { Package, AlertTriangle, PackageX, DollarSign, TrendingUp, Truck, ShoppingCart, BarChart3 } from 'lucide-react';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 
 const Index = () => {
   const formatCurrency = (value: number) => {
@@ -15,6 +14,18 @@ const Index = () => {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value);
+  };
+
+  const totalSales = mockSalesData.reduce((acc, d) => acc + d.sales, 0);
+  const totalDeliveries = mockSalesData.reduce((acc, d) => acc + d.deliveries, 0);
+  const totalRevenue = mockSalesData.reduce((acc, d) => acc + d.revenue, 0);
+  const pendingOrders = mockPurchaseOrders.filter(o => o.status === 'pending' || o.status === 'approved').length;
+
+  const chartConfig = {
+    sales: { label: 'Sales', color: 'hsl(var(--primary))' },
+    deliveries: { label: 'Deliveries', color: 'hsl(var(--success))' },
+    orders: { label: 'Orders', color: 'hsl(var(--warning))' },
+    revenue: { label: 'Revenue', color: 'hsl(var(--chart-1))' },
   };
 
   return (
@@ -28,29 +39,49 @@ const Index = () => {
           {/* Page Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Stock Monitoring</h1>
+              <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
               <p className="text-muted-foreground mt-1">
-                Real-time inventory tracking and alerts
+                Overview of sales, deliveries, and inventory performance
               </p>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="outline">
-                Export Report
-              </Button>
-              <Button>
-                <ShoppingCart className="h-4 w-4 mr-2" />
-                Create Order
-              </Button>
             </div>
           </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
+              title="Total Sales (7 days)"
+              value={totalSales}
+              icon={TrendingUp}
+              trend={{ value: 12, isPositive: true }}
+            />
+            <StatCard
+              title="Total Deliveries"
+              value={totalDeliveries}
+              icon={Truck}
+              variant="success"
+              trend={{ value: 8, isPositive: true }}
+            />
+            <StatCard
+              title="Total Revenue"
+              value={formatCurrency(totalRevenue)}
+              icon={DollarSign}
+              variant="success"
+              trend={{ value: 15.2, isPositive: true }}
+            />
+            <StatCard
+              title="Pending Orders"
+              value={pendingOrders}
+              icon={ShoppingCart}
+              variant="warning"
+            />
+          </div>
+
+          {/* Inventory Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
               title="Total Products"
               value={mockStats.totalProducts}
               icon={Package}
-              trend={{ value: 12, isPositive: true }}
             />
             <StatCard
               title="Low Stock Items"
@@ -65,19 +96,81 @@ const Index = () => {
               variant="critical"
             />
             <StatCard
-              title="Total Stock Value"
+              title="Stock Value"
               value={formatCurrency(mockStats.totalStockValue)}
-              icon={DollarSign}
-              variant="success"
-              trend={{ value: 8.3, isPositive: true }}
+              icon={BarChart3}
             />
           </div>
 
-          {/* Categories Need Restock (Replaced Stock Alerts) */}
-          <CategoryRestockCard products={mockProducts} />
+          {/* Charts Row 1 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Sales Trend Chart */}
+            <div className="glass-card rounded-xl border border-border/50 p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Sales Trend</h3>
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <AreaChart data={mockSalesData}>
+                  <defs>
+                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" fill="url(#salesGradient)" strokeWidth={2} />
+                </AreaChart>
+              </ChartContainer>
+            </div>
 
-          {/* Inventory Table */}
-          <InventoryTable products={mockProducts} />
+            {/* Deliveries Chart */}
+            <div className="glass-card rounded-xl border border-border/50 p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Deliveries</h3>
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <BarChart data={mockSalesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="deliveries" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            </div>
+          </div>
+
+          {/* Charts Row 2 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Revenue Chart */}
+            <div className="glass-card rounded-xl border border-border/50 p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Revenue Trend</h3>
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <LineChart data={mockSalesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                  <ChartTooltip content={<ChartTooltipContent formatter={(value) => formatCurrency(Number(value))} />} />
+                  <Line type="monotone" dataKey="revenue" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ fill: 'hsl(var(--chart-1))' }} />
+                </LineChart>
+              </ChartContainer>
+            </div>
+
+            {/* Orders vs Deliveries Comparison */}
+            <div className="glass-card rounded-xl border border-border/50 p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Orders vs Deliveries</h3>
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <BarChart data={mockSalesData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Legend />
+                  <Bar dataKey="orders" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} name="Orders" />
+                  <Bar dataKey="deliveries" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Deliveries" />
+                </BarChart>
+              </ChartContainer>
+            </div>
+          </div>
         </div>
       </main>
     </div>

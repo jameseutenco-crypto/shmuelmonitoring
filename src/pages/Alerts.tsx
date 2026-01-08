@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { mockAlerts, mockProducts } from '@/data/mockInventory';
+import { mockAlerts, mockProducts, mockSuppliers } from '@/data/mockInventory';
+import { StockAlert } from '@/types/inventory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -10,8 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { AlertTriangle, PackageX, ShoppingCart, CheckCircle, Filter } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { AlertTriangle, PackageX, ShoppingCart, CheckCircle, Filter, Search, Trash2, Bell, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const alertTypeConfig = {
   out_of_stock: {
@@ -38,11 +49,17 @@ const alertTypeConfig = {
 };
 
 export default function Alerts() {
+  const [alerts, setAlerts] = useState<StockAlert[]>(mockAlerts);
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [reorderDialog, setReorderDialog] = useState<StockAlert | null>(null);
 
-  const filteredAlerts = mockAlerts.filter(alert =>
-    typeFilter === 'all' || alert.type === typeFilter
-  );
+  const filteredAlerts = alerts.filter(alert => {
+    const matchesType = typeFilter === 'all' || alert.type === typeFilter;
+    const matchesSearch = alert.productName.toLowerCase().includes(search.toLowerCase()) ||
+      alert.sku.toLowerCase().includes(search.toLowerCase());
+    return matchesType && matchesSearch;
+  });
 
   const timeAgo = (timestamp: string) => {
     const now = new Date();
@@ -54,19 +71,62 @@ export default function Alerts() {
     return `${Math.floor(diffHours / 24)}d ago`;
   };
 
+  const handleDismiss = (alertId: string) => {
+    setAlerts(alerts.filter(a => a.id !== alertId));
+    toast.success('Alert dismissed');
+  };
+
+  const handleMarkAllRead = () => {
+    setAlerts([]);
+    toast.success('All alerts cleared');
+  };
+
+  const handleReorder = (alert: StockAlert) => {
+    setReorderDialog(alert);
+  };
+
+  const confirmReorder = () => {
+    if (reorderDialog) {
+      const product = mockProducts.find(p => p.id === reorderDialog.productId);
+      const supplier = mockSuppliers.find(s => s.name === product?.supplier);
+      
+      setAlerts(alerts.filter(a => a.id !== reorderDialog.id));
+      toast.success(
+        `Reorder placed for ${reorderDialog.productName}. Expected delivery in ${supplier?.shippingDays || 7} days.`,
+        { duration: 5000 }
+      );
+      setReorderDialog(null);
+    }
+  };
+
+  const getSupplierInfo = (productId: string) => {
+    const product = mockProducts.find(p => p.id === productId);
+    const supplier = mockSuppliers.find(s => s.name === product?.supplier);
+    return { product, supplier };
+  };
+
   return (
     <PageLayout
       title="Alerts"
       description="Stock alerts and notifications"
       actions={
-        <Button variant="outline">
+        <Button variant="outline" onClick={handleMarkAllRead} disabled={alerts.length === 0}>
           <CheckCircle className="h-4 w-4 mr-2" />
-          Mark All Read
+          Clear All
         </Button>
       }
     >
       {/* Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3 mb-6">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search alerts..."
+            className="pl-10 bg-secondary border-border"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-[180px] bg-secondary border-border">
             <Filter className="h-4 w-4 mr-2" />
@@ -81,17 +141,55 @@ export default function Alerts() {
         </Select>
       </div>
 
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="glass-card rounded-xl border border-destructive/30 p-4">
+          <div className="flex items-center gap-3">
+            <PackageX className="h-5 w-5 text-destructive" />
+            <div>
+              <p className="text-2xl font-bold text-foreground">
+                {alerts.filter(a => a.type === 'out_of_stock').length}
+              </p>
+              <p className="text-sm text-muted-foreground">Out of Stock</p>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl border border-warning/30 p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            <div>
+              <p className="text-2xl font-bold text-foreground">
+                {alerts.filter(a => a.type === 'low_stock').length}
+              </p>
+              <p className="text-sm text-muted-foreground">Low Stock</p>
+            </div>
+          </div>
+        </div>
+        <div className="glass-card rounded-xl border border-primary/30 p-4">
+          <div className="flex items-center gap-3">
+            <ShoppingCart className="h-5 w-5 text-primary" />
+            <div>
+              <p className="text-2xl font-bold text-foreground">
+                {alerts.filter(a => a.type === 'reorder_needed').length}
+              </p>
+              <p className="text-sm text-muted-foreground">Reorder Needed</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Alerts List */}
       <div className="space-y-3">
         {filteredAlerts.map((alert) => {
           const config = alertTypeConfig[alert.type];
           const Icon = config.icon;
+          const { product, supplier } = getSupplierInfo(alert.productId);
 
           return (
             <div
               key={alert.id}
               className={cn(
-                'glass-card rounded-xl border p-5 transition-all hover:scale-[1.005]',
+                'glass-card rounded-xl border p-5 transition-all hover:scale-[1.002]',
                 config.bgClass
               )}
             >
@@ -110,10 +208,21 @@ export default function Alerts() {
                   <p className="text-muted-foreground mt-1">
                     SKU: {alert.sku} • Current Stock: {alert.currentStock} • Reorder Point: {alert.reorderPoint}
                   </p>
+                  {supplier && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                      <Truck className="h-3 w-3" />
+                      Supplier: {supplier.name} ({supplier.shippingDays} days shipping)
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline">Dismiss</Button>
-                  <Button>Reorder Now</Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleDismiss(alert.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <Button onClick={() => handleReorder(alert)}>
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Reorder
+                  </Button>
                 </div>
               </div>
             </div>
@@ -122,12 +231,52 @@ export default function Alerts() {
 
         {filteredAlerts.length === 0 && (
           <div className="glass-card rounded-xl border border-border/50 p-12 text-center">
-            <CheckCircle className="h-12 w-12 text-success mx-auto mb-4" />
+            <Bell className="h-12 w-12 text-success mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground">All caught up!</h3>
             <p className="text-muted-foreground mt-1">No alerts matching your filter.</p>
           </div>
         )}
       </div>
+
+      {/* Reorder Dialog */}
+      <Dialog open={!!reorderDialog} onOpenChange={() => setReorderDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Reorder</DialogTitle>
+            <DialogDescription>
+              Place a reorder for this product?
+            </DialogDescription>
+          </DialogHeader>
+          {reorderDialog && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 bg-secondary rounded-lg">
+                <h4 className="font-semibold">{reorderDialog.productName}</h4>
+                <p className="text-sm text-muted-foreground">SKU: {reorderDialog.sku}</p>
+                <div className="mt-2 flex items-center gap-4 text-sm">
+                  <span>Current: <strong>{reorderDialog.currentStock}</strong></span>
+                  <span>Reorder Point: <strong>{reorderDialog.reorderPoint}</strong></span>
+                </div>
+              </div>
+              {(() => {
+                const { supplier } = getSupplierInfo(reorderDialog.productId);
+                return supplier && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Truck className="h-4 w-4 text-primary" />
+                    <span>Supplier: {supplier.name}</span>
+                    <Badge variant="outline">
+                      {supplier.shippingDays} days delivery
+                    </Badge>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReorderDialog(null)}>Cancel</Button>
+            <Button onClick={confirmReorder}>Place Reorder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }
