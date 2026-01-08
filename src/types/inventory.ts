@@ -11,6 +11,7 @@ export interface Product {
   supplier: string;
   lastRestocked: string;
   warehouse: string;
+  icon: string;
 }
 
 export type StockStatus = 'healthy' | 'warning' | 'critical' | 'overstock';
