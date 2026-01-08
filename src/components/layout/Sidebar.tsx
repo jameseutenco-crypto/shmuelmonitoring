@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Package,
@@ -9,8 +10,10 @@ import {
   Building2,
   Users,
   FileBarChart,
+  LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface NavItem {
   icon: React.ElementType;
@@ -39,6 +42,20 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className }: SidebarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const isActive = (href: string) => {
+    if (href === '/') return location.pathname === '/';
+    return location.pathname.startsWith(href);
+  };
+
   return (
     <aside
       className={cn(
@@ -59,18 +76,19 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-3 py-4">
+        <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
           <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Main
           </p>
           {mainNavItems.map((item) => (
             <Button
               key={item.href}
-              variant={item.href === '/' ? 'secondary' : 'ghost'}
+              variant={isActive(item.href) ? 'secondary' : 'ghost'}
               className={cn(
                 'w-full justify-start gap-3 h-10',
-                item.href === '/' && 'bg-sidebar-accent text-sidebar-accent-foreground'
+                isActive(item.href) && 'bg-sidebar-accent text-sidebar-accent-foreground'
               )}
+              onClick={() => navigate(item.href)}
             >
               <item.icon className="h-4 w-4" />
               <span className="flex-1 text-left">{item.label}</span>
@@ -88,8 +106,12 @@ export function Sidebar({ className }: SidebarProps) {
           {secondaryNavItems.map((item) => (
             <Button
               key={item.href}
-              variant="ghost"
-              className="w-full justify-start gap-3 h-10"
+              variant={isActive(item.href) ? 'secondary' : 'ghost'}
+              className={cn(
+                'w-full justify-start gap-3 h-10',
+                isActive(item.href) && 'bg-sidebar-accent text-sidebar-accent-foreground'
+              )}
+              onClick={() => navigate(item.href)}
             >
               <item.icon className="h-4 w-4" />
               <span>{item.label}</span>
@@ -97,15 +119,23 @@ export function Sidebar({ className }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Footer */}
+        {/* User & Logout */}
         <div className="border-t border-sidebar-border p-4">
           <div className="rounded-lg bg-sidebar-accent/50 p-4">
-            <p className="text-sm font-medium text-sidebar-foreground">Need help?</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Check our documentation or contact support.
-            </p>
-            <Button size="sm" className="mt-3 w-full">
-              View Docs
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                <span className="text-sm font-bold text-primary-foreground">
+                  {user?.username?.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-sidebar-foreground">{user?.username}</p>
+                <p className="text-xs text-muted-foreground">Administrator</p>
+              </div>
+            </div>
+            <Button size="sm" variant="outline" className="w-full" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
             </Button>
           </div>
         </div>
