@@ -80,6 +80,7 @@ export const mockProducts: Product[] = [
     supplier: 'AudioTech Inc.',
     lastRestocked: '2024-01-15',
     warehouse: 'Warehouse A',
+    icon: 'Headphones',
   },
   {
     id: '2',
@@ -94,6 +95,7 @@ export const mockProducts: Product[] = [
     supplier: 'KeyMaster Ltd.',
     lastRestocked: '2024-01-10',
     warehouse: 'Warehouse A',
+    icon: 'Keyboard',
   },
   {
     id: '3',
@@ -108,6 +110,7 @@ export const mockProducts: Product[] = [
     supplier: 'ClickPro Corp.',
     lastRestocked: '2024-01-05',
     warehouse: 'Warehouse B',
+    icon: 'Mouse',
   },
   {
     id: '4',
@@ -122,6 +125,7 @@ export const mockProducts: Product[] = [
     supplier: 'DisplayMax',
     lastRestocked: '2024-01-12',
     warehouse: 'Warehouse A',
+    icon: 'Monitor',
   },
   {
     id: '5',
@@ -136,6 +140,7 @@ export const mockProducts: Product[] = [
     supplier: 'CableWorld',
     lastRestocked: '2024-01-18',
     warehouse: 'Warehouse C',
+    icon: 'Cable',
   },
   {
     id: '6',
@@ -150,6 +155,7 @@ export const mockProducts: Product[] = [
     supplier: 'ComfortSeating',
     lastRestocked: '2024-01-08',
     warehouse: 'Warehouse B',
+    icon: 'Armchair',
   },
   {
     id: '7',
@@ -164,6 +170,7 @@ export const mockProducts: Product[] = [
     supplier: 'DeskPro Solutions',
     lastRestocked: '2024-01-14',
     warehouse: 'Warehouse B',
+    icon: 'Table',
   },
   {
     id: '8',
@@ -178,6 +185,7 @@ export const mockProducts: Product[] = [
     supplier: 'VisionTech',
     lastRestocked: '2024-01-16',
     warehouse: 'Warehouse A',
+    icon: 'Camera',
   },
   {
     id: '9',
@@ -192,6 +200,7 @@ export const mockProducts: Product[] = [
     supplier: 'AudioTech Inc.',
     lastRestocked: '2024-01-11',
     warehouse: 'Warehouse C',
+    icon: 'HeadphonesIcon',
   },
   {
     id: '10',
@@ -206,6 +215,7 @@ export const mockProducts: Product[] = [
     supplier: 'TechStands Co.',
     lastRestocked: '2024-01-17',
     warehouse: 'Warehouse A',
+    icon: 'Laptop',
   },
 ];
 

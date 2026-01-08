@@ -18,12 +18,50 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Filter, MoreHorizontal, ShoppingCart, TrendingUp } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { 
+  Search, 
+  Filter, 
+  MoreHorizontal, 
+  ShoppingCart, 
+  TrendingUp, 
+  Headphones, 
+  Keyboard, 
+  Mouse, 
+  Monitor, 
+  Cable, 
+  Armchair, 
+  Laptop,
+  Camera,
+  Package,
+  Edit,
+  Trash2,
+  Eye
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface InventoryTableProps {
   products: Product[];
 }
+
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  Headphones,
+  HeadphonesIcon: Headphones,
+  Keyboard,
+  Mouse,
+  Monitor,
+  Cable,
+  Armchair,
+  Table: Package, // Using Package as fallback for Table
+  Camera,
+  Laptop,
+};
 
 export function InventoryTable({ products }: InventoryTableProps) {
   const [search, setSearch] = useState('');
@@ -54,6 +92,45 @@ export function InventoryTable({ products }: InventoryTableProps) {
       style: 'currency',
       currency: 'USD',
     }).format(value);
+  };
+
+  const handleAddToCart = (product: Product) => {
+    toast.success(`Added ${product.name} to reorder cart`, {
+      description: `SKU: ${product.sku}`,
+    });
+  };
+
+  const handleViewTrends = (product: Product) => {
+    toast.info(`Viewing trends for ${product.name}`, {
+      description: 'Stock history and sales data loaded',
+    });
+  };
+
+  const handleEdit = (product: Product) => {
+    toast.info(`Editing ${product.name}`, {
+      description: 'Opening product editor...',
+    });
+  };
+
+  const handleDelete = (product: Product) => {
+    toast.warning(`Delete ${product.name}?`, {
+      description: 'This action cannot be undone',
+      action: {
+        label: 'Confirm',
+        onClick: () => toast.success(`${product.name} deleted`),
+      },
+    });
+  };
+
+  const handleViewDetails = (product: Product) => {
+    toast.info(`Product Details: ${product.name}`, {
+      description: `Stock: ${product.currentStock} | Supplier: ${product.supplier}`,
+    });
+  };
+
+  const getProductIcon = (iconName: string) => {
+    const IconComponent = iconMap[iconName] || Package;
+    return IconComponent;
   };
 
   return (
@@ -116,12 +193,13 @@ export function InventoryTable({ products }: InventoryTableProps) {
               <TableHead className="text-muted-foreground font-semibold text-right">Unit Cost</TableHead>
               <TableHead className="text-muted-foreground font-semibold text-right">Stock Value</TableHead>
               <TableHead className="text-muted-foreground font-semibold">Warehouse</TableHead>
-              <TableHead className="text-muted-foreground font-semibold w-[100px]">Actions</TableHead>
+              <TableHead className="text-muted-foreground font-semibold w-[120px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredProducts.map((product, index) => {
               const status = getStockStatus(product.currentStock, product.minStock, product.reorderPoint, product.maxStock);
+              const ProductIcon = getProductIcon(product.icon);
               return (
                 <TableRow
                   key={product.id}
@@ -132,7 +210,14 @@ export function InventoryTable({ products }: InventoryTableProps) {
                   )}
                   style={{ animationDelay: `${0.05 * index}s` }}
                 >
-                  <TableCell className="font-medium">{product.name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <ProductIcon className="h-5 w-5 text-primary" />
+                      </div>
+                      <span className="font-medium">{product.name}</span>
+                    </div>
+                  </TableCell>
                   <TableCell className="text-muted-foreground font-mono text-sm">{product.sku}</TableCell>
                   <TableCell>
                     <span className="px-2 py-1 rounded-md bg-secondary text-secondary-foreground text-xs font-medium">
@@ -157,15 +242,48 @@ export function InventoryTable({ products }: InventoryTableProps) {
                   <TableCell className="text-muted-foreground">{product.warehouse}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="h-8 w-8"
+                        onClick={() => handleAddToCart(product)}
+                        title="Add to reorder cart"
+                      >
                         <ShoppingCart className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className="h-8 w-8"
+                        onClick={() => handleViewTrends(product)}
+                        title="View trends"
+                      >
                         <TrendingUp className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleViewDetails(product)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEdit(product)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Product
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDelete(product)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

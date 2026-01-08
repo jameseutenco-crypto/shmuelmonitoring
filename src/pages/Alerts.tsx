@@ -20,7 +20,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { AlertTriangle, PackageX, ShoppingCart, CheckCircle, Filter, Search, Trash2, Bell, Truck } from 'lucide-react';
+import { 
+  AlertTriangle, 
+  PackageX, 
+  ShoppingCart, 
+  CheckCircle, 
+  Filter, 
+  Search, 
+  Trash2, 
+  Bell, 
+  Truck,
+  Headphones,
+  Keyboard,
+  Mouse,
+  Monitor,
+  Cable,
+  Armchair,
+  Camera,
+  Laptop,
+  Package
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -48,6 +67,19 @@ const alertTypeConfig = {
   },
 };
 
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  Headphones,
+  HeadphonesIcon: Headphones,
+  Keyboard,
+  Mouse,
+  Monitor,
+  Cable,
+  Armchair,
+  Table: Package,
+  Camera,
+  Laptop,
+};
+
 export default function Alerts() {
   const [alerts, setAlerts] = useState<StockAlert[]>(mockAlerts);
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -71,9 +103,9 @@ export default function Alerts() {
     return `${Math.floor(diffHours / 24)}d ago`;
   };
 
-  const handleDismiss = (alertId: string) => {
+  const handleDismiss = (alertId: string, productName: string) => {
     setAlerts(alerts.filter(a => a.id !== alertId));
-    toast.success('Alert dismissed');
+    toast.success(`Alert dismissed for ${productName}`);
   };
 
   const handleMarkAllRead = () => {
@@ -92,8 +124,11 @@ export default function Alerts() {
       
       setAlerts(alerts.filter(a => a.id !== reorderDialog.id));
       toast.success(
-        `Reorder placed for ${reorderDialog.productName}. Expected delivery in ${supplier?.shippingDays || 7} days.`,
-        { duration: 5000 }
+        `Reorder placed for ${reorderDialog.productName}`,
+        { 
+          description: `Expected delivery in ${supplier?.shippingDays || 7} days from ${supplier?.name}`,
+          duration: 5000 
+        }
       );
       setReorderDialog(null);
     }
@@ -103,6 +138,12 @@ export default function Alerts() {
     const product = mockProducts.find(p => p.id === productId);
     const supplier = mockSuppliers.find(s => s.name === product?.supplier);
     return { product, supplier };
+  };
+
+  const getProductIcon = (productId: string) => {
+    const product = mockProducts.find(p => p.id === productId);
+    if (!product) return Package;
+    return iconMap[product.icon] || Package;
   };
 
   return (
@@ -184,6 +225,7 @@ export default function Alerts() {
           const config = alertTypeConfig[alert.type];
           const Icon = config.icon;
           const { product, supplier } = getSupplierInfo(alert.productId);
+          const ProductIcon = getProductIcon(alert.productId);
 
           return (
             <div
@@ -194,19 +236,20 @@ export default function Alerts() {
               )}
             >
               <div className="flex items-start gap-4">
-                <div className={cn('rounded-lg p-3 bg-background/50', config.iconClass)}>
-                  <Icon className="h-5 w-5" />
+                <div className="h-12 w-12 rounded-lg bg-background/80 flex items-center justify-center border">
+                  <ProductIcon className="h-6 w-6 text-foreground" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <Badge variant="outline" className={config.badgeClass}>
+                      <Icon className="h-3 w-3 mr-1" />
                       {config.label}
                     </Badge>
                     <span className="text-sm text-muted-foreground">{timeAgo(alert.timestamp)}</span>
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">{alert.productName}</h3>
                   <p className="text-muted-foreground mt-1">
-                    SKU: {alert.sku} • Current Stock: {alert.currentStock} • Reorder Point: {alert.reorderPoint}
+                    SKU: {alert.sku} • Current Stock: <span className="font-semibold text-foreground">{alert.currentStock}</span> • Reorder Point: {alert.reorderPoint}
                   </p>
                   {supplier && (
                     <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
@@ -216,7 +259,12 @@ export default function Alerts() {
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => handleDismiss(alert.id)}>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={() => handleDismiss(alert.id, alert.productName)}
+                    title="Dismiss alert"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                   <Button onClick={() => handleReorder(alert)}>
@@ -250,10 +298,22 @@ export default function Alerts() {
           {reorderDialog && (
             <div className="space-y-4 py-4">
               <div className="p-4 bg-secondary rounded-lg">
-                <h4 className="font-semibold">{reorderDialog.productName}</h4>
-                <p className="text-sm text-muted-foreground">SKU: {reorderDialog.sku}</p>
-                <div className="mt-2 flex items-center gap-4 text-sm">
-                  <span>Current: <strong>{reorderDialog.currentStock}</strong></span>
+                <div className="flex items-center gap-3 mb-2">
+                  {(() => {
+                    const ProductIcon = getProductIcon(reorderDialog.productId);
+                    return (
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <ProductIcon className="h-5 w-5 text-primary" />
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <h4 className="font-semibold">{reorderDialog.productName}</h4>
+                    <p className="text-sm text-muted-foreground">SKU: {reorderDialog.sku}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-4 text-sm">
+                  <span>Current Stock: <strong className="text-destructive">{reorderDialog.currentStock}</strong></span>
                   <span>Reorder Point: <strong>{reorderDialog.reorderPoint}</strong></span>
                 </div>
               </div>
@@ -273,7 +333,10 @@ export default function Alerts() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setReorderDialog(null)}>Cancel</Button>
-            <Button onClick={confirmReorder}>Place Reorder</Button>
+            <Button onClick={confirmReorder}>
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Place Reorder
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
