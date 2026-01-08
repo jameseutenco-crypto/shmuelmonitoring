@@ -20,6 +20,7 @@ export interface PurchaseOrder {
   orderDate: string;
   expectedDelivery: string;
   actualDelivery?: string;
+  trackingNumber?: string;
 }
 
 export interface PurchaseOrderItem {
@@ -264,6 +265,7 @@ export const mockPurchaseOrders: PurchaseOrder[] = [
     status: 'pending', 
     orderDate: '2024-01-19',
     expectedDelivery: '2024-01-22',
+    trackingNumber: 'TRK001ABC123',
   },
   { 
     id: 'PO-002', 
@@ -276,6 +278,7 @@ export const mockPurchaseOrders: PurchaseOrder[] = [
     status: 'approved', 
     orderDate: '2024-01-18',
     expectedDelivery: '2024-01-23',
+    trackingNumber: 'TRK002DEF456',
   },
   { 
     id: 'PO-003', 
@@ -288,6 +291,7 @@ export const mockPurchaseOrders: PurchaseOrder[] = [
     status: 'shipped', 
     orderDate: '2024-01-17',
     expectedDelivery: '2024-01-19',
+    trackingNumber: 'TRK003GHI789',
   },
   { 
     id: 'PO-004', 
@@ -301,6 +305,7 @@ export const mockPurchaseOrders: PurchaseOrder[] = [
     orderDate: '2024-01-10',
     expectedDelivery: '2024-01-17',
     actualDelivery: '2024-01-16',
+    trackingNumber: 'TRK004JKL012',
   },
   { 
     id: 'PO-005', 
@@ -313,6 +318,7 @@ export const mockPurchaseOrders: PurchaseOrder[] = [
     status: 'pending', 
     orderDate: '2024-01-19',
     expectedDelivery: '2024-01-20',
+    trackingNumber: 'TRK005MNO345',
   },
 ];
 
