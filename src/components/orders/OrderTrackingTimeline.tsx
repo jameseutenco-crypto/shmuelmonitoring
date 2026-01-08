@@ -1,12 +1,11 @@
-import { CheckCircle, Circle, Clock, Package, Truck, MapPin, Building } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TrackingEvent {
   id: string;
   date: string;
-  time: string;
   status: string;
-  location: string;
+  location?: string;
   completed: boolean;
 }
 
@@ -15,69 +14,62 @@ interface OrderTrackingTimelineProps {
   events: TrackingEvent[];
 }
 
-const statusIcons: Record<string, React.ReactNode> = {
-  'Order Placed': <Package className="h-4 w-4" />,
-  'Order Confirmed': <CheckCircle className="h-4 w-4" />,
-  'Processing': <Clock className="h-4 w-4" />,
-  'Shipped': <Truck className="h-4 w-4" />,
-  'In Transit': <Truck className="h-4 w-4" />,
-  'Out for Delivery': <MapPin className="h-4 w-4" />,
-  'Arrived at Hub': <Building className="h-4 w-4" />,
-  'Delivered': <CheckCircle className="h-4 w-4" />,
-};
-
 export function OrderTrackingTimeline({ trackingNumber, events }: OrderTrackingTimelineProps) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20">
-        <span className="text-sm text-muted-foreground">Tracking Number</span>
-        <span className="font-mono font-bold text-primary">{trackingNumber}</span>
+      {/* Tracking Number Header */}
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-muted-foreground">Tracking Number</p>
+        <p className="text-xl font-bold text-primary font-mono">{trackingNumber}</p>
       </div>
       
-      <div className="space-y-0">
-        <div className="grid grid-cols-[140px_1fr] gap-4 text-sm font-semibold text-muted-foreground border-b border-border pb-2 mb-2">
-          <span>Date of Last Status</span>
-          <span>Transaction Status</span>
+      {/* Tracking Table */}
+      <div className="border border-border rounded-lg overflow-hidden">
+        {/* Header */}
+        <div className="grid grid-cols-[160px_1fr] bg-muted/50 border-b border-border">
+          <div className="px-4 py-3 font-semibold text-sm text-foreground">
+            Date of Last Status
+          </div>
+          <div className="px-4 py-3 font-semibold text-sm text-foreground border-l border-border">
+            Transaction Status
+          </div>
         </div>
         
-        {events.map((event, index) => (
-          <div
-            key={event.id}
-            className={cn(
-              "grid grid-cols-[140px_1fr] gap-4 py-3 border-b border-border/50 last:border-0",
-              index === 0 && "bg-success/5"
-            )}
-          >
-            <div className="text-sm text-muted-foreground">
-              <p>{event.date}</p>
-              <p className="text-xs">{event.time}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                "flex items-center justify-center w-6 h-6 rounded-full",
-                event.completed ? "bg-success text-success-foreground" : "bg-muted text-muted-foreground"
-              )}>
-                {event.completed ? (
-                  <CheckCircle className="h-4 w-4" />
-                ) : (
-                  <Circle className="h-4 w-4" />
-                )}
+        {/* Events */}
+        <div className="divide-y divide-border">
+          {events.map((event, index) => (
+            <div
+              key={event.id}
+              className={cn(
+                "grid grid-cols-[160px_1fr]",
+                index % 2 === 0 ? "bg-background" : "bg-muted/20"
+              )}
+            >
+              <div className="px-4 py-3 text-sm text-muted-foreground">
+                {event.date}
               </div>
-              <div className="flex items-center gap-2">
-                {statusIcons[event.status] || <Circle className="h-4 w-4" />}
+              <div className="px-4 py-3 border-l border-border flex items-center gap-3">
+                <CheckCircle2 
+                  className={cn(
+                    "h-5 w-5 flex-shrink-0",
+                    event.completed ? "text-amber-500" : "text-muted-foreground/30"
+                  )} 
+                  fill={event.completed ? "currentColor" : "none"}
+                  strokeWidth={event.completed ? 0 : 2}
+                />
                 <span className={cn(
-                  "font-medium",
+                  "text-sm",
                   event.completed ? "text-foreground" : "text-muted-foreground"
                 )}>
                   {event.status}
+                  {event.location && (
+                    <span className="text-muted-foreground"> {event.location}</span>
+                  )}
                 </span>
-                {event.location && (
-                  <span className="text-muted-foreground">at {event.location}</span>
-                )}
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -94,25 +86,23 @@ export function generateTrackingEvents(
   const events: TrackingEvent[] = [];
   const orderDateObj = new Date(orderDate);
   
-  // Order placed
+  // Always add order placed (oldest - at bottom)
   events.push({
     id: '1',
     date: formatDate(orderDateObj),
-    time: '09:00 AM',
-    status: 'Order Placed',
-    location: 'Online System',
+    status: `Order placed via`,
+    location: 'Online System.',
     completed: true,
   });
 
   if (['approved', 'shipped', 'delivered'].includes(status)) {
-    const approvedDate = new Date(orderDateObj);
-    approvedDate.setHours(approvedDate.getHours() + 4);
+    const confirmedDate = new Date(orderDateObj);
+    confirmedDate.setHours(confirmedDate.getHours() + 2);
     events.unshift({
       id: '2',
-      date: formatDate(approvedDate),
-      time: '01:30 PM',
-      status: 'Order Confirmed',
-      location: supplierName,
+      date: formatDate(confirmedDate),
+      status: `Order confirmed by`,
+      location: `${supplierName}.`,
       completed: true,
     });
   }
@@ -123,9 +113,8 @@ export function generateTrackingEvents(
     events.unshift({
       id: '3',
       date: formatDate(processingDate),
-      time: '10:00 AM',
-      status: 'Processing',
-      location: `${supplierName} Warehouse`,
+      status: `Processing at`,
+      location: `${supplierName} WAREHOUSE.`,
       completed: true,
     });
   }
@@ -136,9 +125,8 @@ export function generateTrackingEvents(
     events.unshift({
       id: '4',
       date: formatDate(shippedDate),
-      time: '04:00 PM',
-      status: 'Shipped',
-      location: `${supplierName} Facility`,
+      status: `Forwarded to`,
+      location: 'REGIONAL DISTRIBUTION CENTER.',
       completed: true,
     });
 
@@ -147,9 +135,8 @@ export function generateTrackingEvents(
     events.unshift({
       id: '5',
       date: formatDate(transitDate),
-      time: '08:30 AM',
-      status: 'In Transit',
-      location: 'Regional Distribution Center',
+      status: `Arrived at`,
+      location: 'REGIONAL DISTRIBUTION CENTER.',
       completed: true,
     });
 
@@ -158,30 +145,38 @@ export function generateTrackingEvents(
     events.unshift({
       id: '6',
       date: formatDate(hubDate),
-      time: '02:45 PM',
-      status: 'Arrived at Hub',
-      location: 'Local Delivery Hub',
+      status: `Forwarded to`,
+      location: 'LOCAL DELIVERY HUB.',
+      completed: true,
+    });
+
+    const arriveHubDate = new Date(orderDateObj);
+    arriveHubDate.setDate(arriveHubDate.getDate() + 3);
+    events.unshift({
+      id: '7',
+      date: formatDate(arriveHubDate),
+      status: `Arrived at`,
+      location: 'LOCAL DELIVERY HUB.',
       completed: true,
     });
   }
 
   if (status === 'delivered') {
     const deliveryDateObj = actualDelivery ? new Date(actualDelivery) : new Date(expectedDelivery);
+    
     events.unshift({
-      id: '7',
+      id: '8',
       date: formatDate(deliveryDateObj),
-      time: '11:20 AM',
-      status: 'Out for Delivery',
-      location: 'Local Area',
+      status: `Ready for delivery. Please expect delivery within the day.`,
+      location: '',
       completed: true,
     });
 
     events.unshift({
-      id: '8',
+      id: '9',
       date: formatDate(deliveryDateObj),
-      time: '03:15 PM',
-      status: 'Delivered',
-      location: 'Your Warehouse',
+      status: `Received by`,
+      location: `WAREHOUSE MANAGER on ${formatDate(deliveryDateObj)}.`,
       completed: true,
     });
   }
