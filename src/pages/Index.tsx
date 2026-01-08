@@ -1,9 +1,9 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { AlertCard } from '@/components/dashboard/AlertCard';
+import { CategoryRestockCard } from '@/components/dashboard/CategoryRestockCard';
 import { InventoryTable } from '@/components/dashboard/InventoryTable';
-import { mockProducts, mockAlerts, mockStats } from '@/data/mockInventory';
+import { mockProducts, mockStats } from '@/data/mockInventory';
 import { Package, AlertTriangle, PackageX, DollarSign, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -73,25 +73,8 @@ const Index = () => {
             />
           </div>
 
-          {/* Alerts Section */}
-          <div className="glass-card rounded-xl border border-border/50 p-6 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">Stock Alerts</h2>
-                <p className="text-sm text-muted-foreground">
-                  {mockAlerts.length} items need attention
-                </p>
-              </div>
-              <Button variant="ghost" size="sm">
-                View All
-              </Button>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {mockAlerts.map((alert) => (
-                <AlertCard key={alert.id} alert={alert} />
-              ))}
-            </div>
-          </div>
+          {/* Categories Need Restock (Replaced Stock Alerts) */}
+          <CategoryRestockCard products={mockProducts} />
 
           {/* Inventory Table */}
           <InventoryTable products={mockProducts} />
