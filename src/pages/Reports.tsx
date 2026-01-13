@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useInventory } from '@/contexts/InventoryContext';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { FileBarChart, Download, Calendar, TrendingUp, Package, DollarSign, Clock, CheckCircle, Loader2 } from 'lucide-react';
+import { FileBarChart, Download, Calendar, TrendingUp, Package, DollarSign, Clock, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Report {
@@ -40,6 +41,7 @@ const initialReportTypes: Report[] = [
 ];
 
 export default function Reports() {
+  const { products, stats, alerts, isConnected, loading, refresh } = useInventory();
   const [reports, setReports] = useState<Report[]>(initialReportTypes);
   const [scheduleDialog, setScheduleDialog] = useState<Report | null>(null);
   const [scheduleFrequency, setScheduleFrequency] = useState('daily');
@@ -50,19 +52,44 @@ export default function Reports() {
       r.id === reportId ? { ...r, status: 'generating' as const } : r
     ));
 
-    // Simulate generation
+    // Generate actual report data based on connected sheet
     setTimeout(() => {
+      const report = reports.find(r => r.id === reportId);
+      let csvContent = '';
+      
+      if (report?.name === 'Inventory Valuation') {
+        csvContent = 'SKU,Name,Category,Stock,Unit Cost,Total Value,Warehouse\n';
+        products.forEach(p => {
+          csvContent += `${p.sku},${p.name},${p.category},${p.currentStock},${p.unitCost},${(p.currentStock * p.unitCost).toFixed(2)},${p.warehouse}\n`;
+        });
+      } else if (report?.name === 'Low Stock Report') {
+        csvContent = 'SKU,Name,Current Stock,Reorder Point,Status\n';
+        products.filter(p => p.currentStock <= p.reorderPoint).forEach(p => {
+          const status = p.currentStock === 0 ? 'Out of Stock' : 'Low Stock';
+          csvContent += `${p.sku},${p.name},${p.currentStock},${p.reorderPoint},${status}\n`;
+        });
+      } else {
+        csvContent = 'Product,SKU,Category,Stock,Value\n';
+        products.forEach(p => {
+          csvContent += `${p.name},${p.sku},${p.category},${p.currentStock},${(p.currentStock * p.unitCost).toFixed(2)}\n`;
+        });
+      }
+
+      // Create and download the file
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${report?.name.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
       setReports(reports.map(r => 
         r.id === reportId ? { ...r, status: 'ready' as const, lastRun: 'Just now' } : r
       ));
-      toast.success('Report generated successfully! Download will start shortly.');
-      
-      // Simulate download
-      const link = document.createElement('a');
-      link.href = '#';
-      link.download = `report-${reportId}.csv`;
-      // In a real app, this would download an actual file
-      toast.info('Report downloaded as CSV');
+      toast.success(`Report generated with ${products.length} products from ${isConnected ? 'Google Sheets' : 'mock'} data!`);
     }, 2000);
   };
 
@@ -116,8 +143,44 @@ export default function Reports() {
   return (
     <PageLayout
       title="Reports"
-      description="Generate and download inventory reports"
+      description={isConnected ? `Generate reports from Google Sheets data (${products.length} products)` : "Generate and download inventory reports"}
+      actions={
+        isConnected && (
+          <Button variant="outline" onClick={refresh} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh Data
+          </Button>
+        )
+      }
     >
+      {/* Quick Stats */}
+      {isConnected && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="glass-card rounded-xl border border-border/50 p-4">
+            <p className="text-sm text-muted-foreground">Total Products</p>
+            <p className="text-2xl font-bold text-foreground">{stats.totalProducts}</p>
+          </div>
+          <div className="glass-card rounded-xl border border-border/50 p-4">
+            <p className="text-sm text-muted-foreground">Low Stock Items</p>
+            <p className="text-2xl font-bold text-warning">{stats.lowStockItems}</p>
+          </div>
+          <div className="glass-card rounded-xl border border-border/50 p-4">
+            <p className="text-sm text-muted-foreground">Out of Stock</p>
+            <p className="text-2xl font-bold text-destructive">{stats.outOfStockItems}</p>
+          </div>
+          <div className="glass-card rounded-xl border border-border/50 p-4">
+            <p className="text-sm text-muted-foreground">Total Value</p>
+            <p className="text-2xl font-bold text-success">
+              ${stats.totalStockValue.toLocaleString()}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {reports.map((report) => {
           const Icon = report.icon;

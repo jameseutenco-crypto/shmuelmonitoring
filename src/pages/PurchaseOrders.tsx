@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useInventory } from '@/contexts/InventoryContext';
 import {
   Table,
   TableBody,
@@ -29,8 +30,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Eye, Truck, CheckCircle, XCircle, Clock, Search, Package, MapPin } from 'lucide-react';
-import { mockPurchaseOrders, mockSuppliers, mockProducts, getSupplierByName, PurchaseOrder } from '@/data/mockInventory';
+import { Plus, Eye, Truck, CheckCircle, XCircle, Clock, Search, Package, MapPin, RefreshCw, Loader2 } from 'lucide-react';
+import { PurchaseOrder } from '@/data/mockInventory';
 import { StatusFilterTabs } from '@/components/orders/StatusFilterTabs';
 import { OrderTrackingTimeline, generateTrackingEvents, generateTrackingNumber } from '@/components/orders/OrderTrackingTimeline';
 import { toast } from 'sonner';
@@ -51,23 +52,10 @@ const statusIcons: Record<string, React.ReactNode> = {
   cancelled: <XCircle className="h-3 w-3" />,
 };
 
-// Product stock state (simulating real inventory)
-const initialProductStock: Record<string, number> = {
-  '1': 145,  // Wireless Headphones Pro
-  '2': 23,   // Mechanical Keyboard RGB
-  '3': 0,    // Ergonomic Mouse Wireless
-  '4': 67,   // 27" 4K Monitor
-  '5': 892,  // USB-C Cable 3m
-  '6': 12,   // Ergonomic Office Chair
-  '7': 8,    // Standing Desk Large
-  '8': 156,  // HD Webcam 1080p
-  '9': 45,   // Headphone Stand Premium
-  '10': 78,  // Laptop Stand Aluminum
-};
-
 export default function PurchaseOrders() {
-  const [orders, setOrders] = useState<PurchaseOrder[]>(mockPurchaseOrders);
-  const [productStock, setProductStock] = useState<Record<string, number>>(initialProductStock);
+  const { products, suppliers, loading, isConnected, refresh } = useInventory();
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [productStock, setProductStock] = useState<Record<string, number>>({});
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -80,6 +68,15 @@ export default function PurchaseOrders() {
     productId: '',
     quantity: 1,
   });
+
+  // Initialize product stock from context products
+  useMemo(() => {
+    const stock: Record<string, number> = {};
+    products.forEach(p => {
+      stock[p.id] = p.currentStock;
+    });
+    setProductStock(stock);
+  }, [products]);
 
   // Calculate order counts for filter tabs
   const orderCounts = useMemo(() => {
@@ -140,8 +137,8 @@ export default function PurchaseOrders() {
   };
 
   const handleCreateOrder = () => {
-    const supplier = mockSuppliers.find(s => s.id === newOrder.supplierId);
-    const product = mockProducts.find(p => p.id === newOrder.productId);
+    const supplier = suppliers.find(s => s.id === newOrder.supplierId);
+    const product = products.find(p => p.id === newOrder.productId);
     
     if (!supplier || !product) {
       toast.error('Please select supplier and product');
@@ -181,86 +178,98 @@ export default function PurchaseOrders() {
     setIsTrackingOpen(true);
   };
 
-  const selectedSupplier = mockSuppliers.find(s => s.id === newOrder.supplierId);
-  const selectedProduct = mockProducts.find(p => p.id === newOrder.productId);
+  const selectedSupplier = suppliers.find(s => s.id === newOrder.supplierId);
+  const selectedProduct = products.find(p => p.id === newOrder.productId);
 
   return (
     <PageLayout
       title="Purchase Orders"
-      description="Manage supplier orders and track deliveries"
+      description={isConnected ? `${orders.length} orders - Products from Google Sheets` : "Manage supplier orders and track deliveries"}
       actions={
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Order
+        <div className="flex gap-2">
+          {isConnected && (
+            <Button variant="outline" onClick={refresh} disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Refresh
             </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Create Purchase Order</DialogTitle>
-              <DialogDescription>
-                Create a new order. Delivery time is based on supplier shipping days.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Supplier</Label>
-                <Select value={newOrder.supplierId} onValueChange={(v) => setNewOrder({...newOrder, supplierId: v})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockSuppliers.map(s => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} ({s.shippingDays} days shipping)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedSupplier && (
-                  <p className="text-sm text-muted-foreground">
-                    <Truck className="h-3 w-3 inline mr-1" />
-                    Shipping: {selectedSupplier.shippingDays} days
-                  </p>
-                )}
+          )}
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Order
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Create Purchase Order</DialogTitle>
+                <DialogDescription>
+                  Create a new order. Delivery time is based on supplier shipping days.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Supplier</Label>
+                  <Select value={newOrder.supplierId} onValueChange={(v) => setNewOrder({...newOrder, supplierId: v})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select supplier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {suppliers.map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name} ({s.shippingDays} days shipping)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedSupplier && (
+                    <p className="text-sm text-muted-foreground">
+                      <Truck className="h-3 w-3 inline mr-1" />
+                      Shipping: {selectedSupplier.shippingDays} days
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label>Product</Label>
+                  <Select value={newOrder.productId} onValueChange={(v) => setNewOrder({...newOrder, productId: v})}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} - ${p.unitCost} (Stock: {productStock[p.id] || 0})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedProduct && (
+                    <p className="text-sm text-muted-foreground">
+                      Current Stock: {productStock[selectedProduct.id] || 0} units
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label>Quantity</Label>
+                  <Input 
+                    type="number" 
+                    min={1}
+                    value={newOrder.quantity}
+                    onChange={(e) => setNewOrder({...newOrder, quantity: parseInt(e.target.value) || 1})}
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label>Product</Label>
-                <Select value={newOrder.productId} onValueChange={(v) => setNewOrder({...newOrder, productId: v})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mockProducts.map(p => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name} - ${p.unitCost} (Stock: {productStock[p.id] || 0})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedProduct && (
-                  <p className="text-sm text-muted-foreground">
-                    Current Stock: {productStock[selectedProduct.id] || 0} units
-                  </p>
-                )}
-              </div>
-              <div className="grid gap-2">
-                <Label>Quantity</Label>
-                <Input 
-                  type="number" 
-                  min={1}
-                  value={newOrder.quantity}
-                  onChange={(e) => setNewOrder({...newOrder, quantity: parseInt(e.target.value) || 1})}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateOrder}>Create Order</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreateOrder}>Create Order</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       }
     >
       {/* Status Filter Tabs */}
@@ -287,7 +296,7 @@ export default function PurchaseOrders() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Suppliers</SelectItem>
-            {mockSuppliers.map(s => (
+            {suppliers.map(s => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
@@ -311,199 +320,157 @@ export default function PurchaseOrders() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredOrders.map((order) => {
-              const supplier = getSupplierByName(order.supplier);
-              return (
-                <TableRow key={order.id} className="border-border/50">
-                  <TableCell className="font-mono font-medium">{order.id}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p>{order.supplier}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {supplier?.shippingDays} days shipping
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <span>{order.items.length} item(s)</span>
-                      <p className="text-xs text-muted-foreground">
-                        {order.items.reduce((sum, item) => sum + item.quantity, 0)} units
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-semibold">${order.total.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={statusStyles[order.status]}>
-                      <span className="mr-1">{statusIcons[order.status]}</span>
-                      {order.status === 'pending' ? 'Ordered' : 
-                       order.status === 'shipped' ? 'In Transit' :
-                       order.status === 'delivered' ? 'Received' :
-                       order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{order.orderDate}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Truck className="h-3 w-3" />
-                      {order.expectedDelivery}
-                    </div>
-                    {order.actualDelivery && (
-                      <p className="text-xs text-success">
-                        <CheckCircle className="h-3 w-3 inline mr-1" />
-                        Received: {order.actualDelivery}
-                      </p>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {order.trackingNumber ? (
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="font-mono text-xs text-primary hover:text-primary/80"
-                        onClick={() => handleViewTracking(order)}
-                      >
-                        <MapPin className="h-3 w-3 mr-1" />
-                        {order.trackingNumber}
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSelectedOrder(order)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[600px]">
-                          <DialogHeader>
-                            <DialogTitle>Order {order.id}</DialogTitle>
-                            <DialogDescription>Order details, items, and stock impact</DialogDescription>
-                          </DialogHeader>
-                          <Tabs defaultValue="details">
-                            <TabsList className="grid w-full grid-cols-2">
-                              <TabsTrigger value="details">Details</TabsTrigger>
-                              <TabsTrigger value="tracking">Tracking</TabsTrigger>
-                            </TabsList>
-                            <TabsContent value="details" className="space-y-4 mt-4">
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <p className="text-muted-foreground">Supplier</p>
-                                  <p className="font-medium">{order.supplier}</p>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">Status</p>
-                                  <Badge variant="outline" className={statusStyles[order.status]}>
-                                    {order.status}
-                                  </Badge>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">Order Date</p>
-                                  <p className="font-medium">{order.orderDate}</p>
-                                </div>
-                                <div>
-                                  <p className="text-muted-foreground">Expected Delivery</p>
-                                  <p className="font-medium">{order.expectedDelivery}</p>
-                                </div>
-                                {order.actualDelivery && (
-                                  <div>
-                                    <p className="text-muted-foreground">Actual Delivery</p>
-                                    <p className="font-medium text-success">{order.actualDelivery}</p>
-                                  </div>
-                                )}
-                                {order.trackingNumber && (
-                                  <div>
-                                    <p className="text-muted-foreground">Tracking Number</p>
-                                    <p className="font-mono font-medium text-primary">{order.trackingNumber}</p>
-                                  </div>
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground mb-2">Items & Stock Impact</p>
-                                <div className="space-y-2">
-                                  {order.items.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between p-3 bg-secondary rounded-lg">
-                                      <div>
-                                        <p className="font-medium">{item.productName}</p>
-                                        <p className="text-xs text-muted-foreground">{item.sku}</p>
-                                        <p className="text-xs mt-1">
-                                          <span className="text-muted-foreground">Current Stock: </span>
-                                          <span className="font-medium">{productStock[item.productId] || 0}</span>
-                                          {order.status !== 'delivered' && order.status !== 'cancelled' && (
-                                            <span className="text-success ml-2">
-                                              (+{item.quantity} pending)
-                                            </span>
-                                          )}
-                                        </p>
-                                      </div>
-                                      <div className="text-right">
-                                        <p>{item.quantity} x ${item.unitCost}</p>
-                                        <p className="font-medium">${(item.quantity * item.unitCost).toFixed(2)}</p>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                              <div className="flex justify-between pt-4 border-t border-border">
-                                <span className="font-semibold">Total</span>
-                                <span className="font-bold text-lg">${order.total.toFixed(2)}</span>
-                              </div>
-                            </TabsContent>
-                            <TabsContent value="tracking" className="mt-4">
-                              {order.trackingNumber ? (
-                                <OrderTrackingTimeline
-                                  trackingNumber={order.trackingNumber}
-                                  events={generateTrackingEvents(
-                                    order.orderDate,
-                                    order.status,
-                                    order.supplier,
-                                    order.expectedDelivery,
-                                    order.actualDelivery
-                                  )}
-                                />
-                              ) : (
-                                <p className="text-center text-muted-foreground py-8">
-                                  Tracking will be available once the order is shipped.
-                                </p>
-                              )}
-                            </TabsContent>
-                          </Tabs>
-                        </DialogContent>
-                      </Dialog>
-                      {order.status === 'pending' && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'approved')}>
-                            Approve
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleStatusChange(order.id, 'cancelled')}>
-                            <XCircle className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </>
-                      )}
-                      {order.status === 'approved' && (
-                        <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'shipped')}>
-                          <Truck className="h-4 w-4 mr-1" /> Ship
-                        </Button>
-                      )}
-                      {order.status === 'shipped' && (
-                        <Button size="sm" variant="success" onClick={() => handleStatusChange(order.id, 'delivered')}>
-                          <Package className="h-4 w-4 mr-1" /> Receive
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {filteredOrders.length === 0 && (
+            {filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                  No orders found matching your filters.
+                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
+                  No purchase orders yet. Create one to get started.
                 </TableCell>
               </TableRow>
+            ) : (
+              filteredOrders.map((order) => {
+                const supplier = suppliers.find(s => s.name === order.supplier);
+                return (
+                  <TableRow key={order.id} className="border-border/50">
+                    <TableCell className="font-mono font-medium">{order.id}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p>{order.supplier}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {supplier?.shippingDays || 5} days shipping
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        <span>{order.items.length} item(s)</span>
+                        <p className="text-xs text-muted-foreground">
+                          {order.items.reduce((sum, item) => sum + item.quantity, 0)} units
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-semibold">${order.total.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={statusStyles[order.status]}>
+                        <span className="mr-1">{statusIcons[order.status]}</span>
+                        {order.status === 'pending' ? 'Ordered' : 
+                         order.status === 'shipped' ? 'In Transit' :
+                         order.status === 'delivered' ? 'Received' :
+                         order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{order.orderDate}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Truck className="h-3 w-3" />
+                        {order.expectedDelivery}
+                      </div>
+                      {order.actualDelivery && (
+                        <p className="text-xs text-success">
+                          <CheckCircle className="h-3 w-3 inline mr-1" />
+                          Received: {order.actualDelivery}
+                        </p>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {order.trackingNumber ? (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="font-mono text-xs text-primary hover:text-primary/80"
+                          onClick={() => handleViewTracking(order)}
+                        >
+                          <MapPin className="h-3 w-3 mr-1" />
+                          {order.trackingNumber}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSelectedOrder(order)}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-[600px]">
+                            <DialogHeader>
+                              <DialogTitle>Order {order.id}</DialogTitle>
+                              <DialogDescription>Order details, items, and stock impact</DialogDescription>
+                            </DialogHeader>
+                            <Tabs defaultValue="details">
+                              <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="details">Details</TabsTrigger>
+                                <TabsTrigger value="tracking">Tracking</TabsTrigger>
+                              </TabsList>
+                              <TabsContent value="details" className="space-y-4 mt-4">
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-muted-foreground">Supplier</p>
+                                    <p className="font-medium">{order.supplier}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Status</p>
+                                    <Badge variant="outline" className={statusStyles[order.status]}>
+                                      {order.status}
+                                    </Badge>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Order Date</p>
+                                    <p className="font-medium">{order.orderDate}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Expected Delivery</p>
+                                    <p className="font-medium">{order.expectedDelivery}</p>
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground mb-2">Items</p>
+                                  <div className="space-y-2">
+                                    {order.items.map((item, idx) => (
+                                      <div key={idx} className="flex justify-between items-center p-2 bg-secondary rounded">
+                                        <div>
+                                          <p className="font-medium">{item.productName}</p>
+                                          <p className="text-xs text-muted-foreground">SKU: {item.sku}</p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="font-medium">{item.quantity} units</p>
+                                          <p className="text-xs text-muted-foreground">${(item.unitCost * item.quantity).toFixed(2)}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </TabsContent>
+                              <TabsContent value="tracking" className="mt-4">
+                                <OrderTrackingTimeline events={generateTrackingEvents(order)} />
+                              </TabsContent>
+                            </Tabs>
+                          </DialogContent>
+                        </Dialog>
+                        {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                          <Select
+                            value={order.status}
+                            onValueChange={(value) => handleStatusChange(order.id, value as PurchaseOrder['status'])}
+                          >
+                            <SelectTrigger className="w-[130px] h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="approved">Approved</SelectItem>
+                              <SelectItem value="shipped">Shipped</SelectItem>
+                              <SelectItem value="delivered">Delivered</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -511,22 +478,15 @@ export default function PurchaseOrders() {
 
       {/* Tracking Dialog */}
       <Dialog open={isTrackingOpen} onOpenChange={setIsTrackingOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Order Tracking - {trackingOrder?.id}</DialogTitle>
-            <DialogDescription>Track your order shipment status</DialogDescription>
+            <DialogTitle>Order Tracking</DialogTitle>
+            <DialogDescription>
+              {trackingOrder?.trackingNumber && `Tracking: ${trackingOrder.trackingNumber}`}
+            </DialogDescription>
           </DialogHeader>
-          {trackingOrder && trackingOrder.trackingNumber && (
-            <OrderTrackingTimeline
-              trackingNumber={trackingOrder.trackingNumber}
-              events={generateTrackingEvents(
-                trackingOrder.orderDate,
-                trackingOrder.status,
-                trackingOrder.supplier,
-                trackingOrder.expectedDelivery,
-                trackingOrder.actualDelivery
-              )}
-            />
+          {trackingOrder && (
+            <OrderTrackingTimeline events={generateTrackingEvents(trackingOrder)} />
           )}
         </DialogContent>
       </Dialog>

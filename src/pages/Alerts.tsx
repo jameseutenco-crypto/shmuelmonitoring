@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { mockAlerts, mockProducts, mockSuppliers } from '@/data/mockInventory';
+import { useInventory } from '@/contexts/InventoryContext';
 import { StockAlert } from '@/types/inventory';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +38,9 @@ import {
   Armchair,
   Camera,
   Laptop,
-  Package
+  Package,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -81,10 +83,15 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 export default function Alerts() {
-  const [alerts, setAlerts] = useState<StockAlert[]>(mockAlerts);
+  const { alerts: sheetAlerts, products, suppliers, loading, isConnected, refresh } = useInventory();
+  const [localAlerts, setLocalAlerts] = useState<StockAlert[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [reorderDialog, setReorderDialog] = useState<StockAlert | null>(null);
+
+  // Combine sheet alerts with local state, filtering out dismissed ones
+  const alerts = sheetAlerts.filter(a => !dismissedIds.has(a.id));
 
   const filteredAlerts = alerts.filter(alert => {
     const matchesType = typeFilter === 'all' || alert.type === typeFilter;
@@ -104,12 +111,13 @@ export default function Alerts() {
   };
 
   const handleDismiss = (alertId: string, productName: string) => {
-    setAlerts(alerts.filter(a => a.id !== alertId));
+    setDismissedIds(prev => new Set([...prev, alertId]));
     toast.success(`Alert dismissed for ${productName}`);
   };
 
   const handleMarkAllRead = () => {
-    setAlerts([]);
+    const allIds = new Set(alerts.map(a => a.id));
+    setDismissedIds(allIds);
     toast.success('All alerts cleared');
   };
 
@@ -119,14 +127,14 @@ export default function Alerts() {
 
   const confirmReorder = () => {
     if (reorderDialog) {
-      const product = mockProducts.find(p => p.id === reorderDialog.productId);
-      const supplier = mockSuppliers.find(s => s.name === product?.supplier);
+      const product = products.find(p => p.id === reorderDialog.productId);
+      const supplier = suppliers.find(s => s.name === product?.supplier);
       
-      setAlerts(alerts.filter(a => a.id !== reorderDialog.id));
+      setDismissedIds(prev => new Set([...prev, reorderDialog.id]));
       toast.success(
         `Reorder placed for ${reorderDialog.productName}`,
         { 
-          description: `Expected delivery in ${supplier?.shippingDays || 7} days from ${supplier?.name}`,
+          description: `Expected delivery in ${supplier?.shippingDays || 7} days from ${supplier?.name || 'supplier'}`,
           duration: 5000 
         }
       );
@@ -135,13 +143,13 @@ export default function Alerts() {
   };
 
   const getSupplierInfo = (productId: string) => {
-    const product = mockProducts.find(p => p.id === productId);
-    const supplier = mockSuppliers.find(s => s.name === product?.supplier);
+    const product = products.find(p => p.id === productId);
+    const supplier = suppliers.find(s => s.name === product?.supplier);
     return { product, supplier };
   };
 
   const getProductIcon = (productId: string) => {
-    const product = mockProducts.find(p => p.id === productId);
+    const product = products.find(p => p.id === productId);
     if (!product) return Package;
     return iconMap[product.icon] || Package;
   };
@@ -149,12 +157,24 @@ export default function Alerts() {
   return (
     <PageLayout
       title="Alerts"
-      description="Stock alerts and notifications"
+      description={isConnected ? `${alerts.length} active alerts from Google Sheets` : "Stock alerts and notifications"}
       actions={
-        <Button variant="outline" onClick={handleMarkAllRead} disabled={alerts.length === 0}>
-          <CheckCircle className="h-4 w-4 mr-2" />
-          Clear All
-        </Button>
+        <div className="flex gap-2">
+          {isConnected && (
+            <Button variant="outline" onClick={refresh} disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Refresh
+            </Button>
+          )}
+          <Button variant="outline" onClick={handleMarkAllRead} disabled={alerts.length === 0}>
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Clear All
+          </Button>
+        </div>
       }
     >
       {/* Filters */}
