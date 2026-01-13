@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { mockProducts, mockWarehouses, Warehouse } from '@/data/mockInventory';
+import { useInventory } from '@/contexts/InventoryContext';
+import { Warehouse } from '@/data/mockInventory';
 import {
   Dialog,
   DialogContent,
@@ -22,11 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Building2, Package, DollarSign, MapPin, Settings, Boxes } from 'lucide-react';
+import { Plus, Building2, Package, DollarSign, MapPin, Settings, Boxes, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Warehouses() {
-  const [warehouses, setWarehouses] = useState<Warehouse[]>(mockWarehouses);
+  const { warehouses: sheetWarehouses, products, loading, isConnected, refresh } = useInventory();
+  const [localWarehouses, setLocalWarehouses] = useState<Warehouse[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [newWarehouse, setNewWarehouse] = useState({
@@ -35,11 +37,14 @@ export default function Warehouses() {
     capacity: 5000,
   });
 
+  // Combine sheet warehouses with local ones
+  const warehouses = [...sheetWarehouses, ...localWarehouses];
+
   const getWarehouseStats = (warehouseName: string) => {
-    const products = mockProducts.filter(p => p.warehouse === warehouseName);
-    const totalItems = products.reduce((acc, p) => acc + p.currentStock, 0);
-    const totalValue = products.reduce((acc, p) => acc + p.currentStock * p.unitCost, 0);
-    return { products: products.length, totalItems, totalValue };
+    const warehouseProducts = products.filter(p => p.warehouse === warehouseName);
+    const totalItems = warehouseProducts.reduce((acc, p) => acc + p.currentStock, 0);
+    const totalValue = warehouseProducts.reduce((acc, p) => acc + p.currentStock * p.unitCost, 0);
+    return { products: warehouseProducts.length, totalItems, totalValue };
   };
 
   const formatCurrency = (value: number) =>
@@ -60,14 +65,15 @@ export default function Warehouses() {
       status: 'active',
     };
 
-    setWarehouses([...warehouses, warehouse]);
+    setLocalWarehouses([...localWarehouses, warehouse]);
     setIsCreateOpen(false);
     setNewWarehouse({ name: '', address: '', capacity: 5000 });
     toast.success(`Warehouse "${warehouse.name}" created successfully`);
   };
 
   const handleStatusChange = (warehouseId: string, status: Warehouse['status']) => {
-    setWarehouses(warehouses.map(w => 
+    // Update local warehouses
+    setLocalWarehouses(localWarehouses.map(w => 
       w.id === warehouseId ? { ...w, status } : w
     ));
     toast.success('Warehouse status updated');
@@ -87,55 +93,67 @@ export default function Warehouses() {
   return (
     <PageLayout
       title="Warehouses"
-      description="Manage warehouse locations and inventory"
+      description={isConnected ? `${warehouses.length} warehouses from Google Sheets` : "Manage warehouse locations and inventory"}
       actions={
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Warehouse
+        <div className="flex gap-2">
+          {isConnected && (
+            <Button variant="outline" onClick={refresh} disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Refresh
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Warehouse</DialogTitle>
-              <DialogDescription>
-                Create a new warehouse location for inventory storage.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Warehouse Name</Label>
-                <Input
-                  placeholder="e.g., Warehouse D"
-                  value={newWarehouse.name}
-                  onChange={(e) => setNewWarehouse({...newWarehouse, name: e.target.value})}
-                />
+          )}
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Warehouse
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Warehouse</DialogTitle>
+                <DialogDescription>
+                  Create a new warehouse location for inventory storage.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Warehouse Name</Label>
+                  <Input
+                    placeholder="e.g., Warehouse D"
+                    value={newWarehouse.name}
+                    onChange={(e) => setNewWarehouse({...newWarehouse, name: e.target.value})}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Address</Label>
+                  <Input
+                    placeholder="Enter full address"
+                    value={newWarehouse.address}
+                    onChange={(e) => setNewWarehouse({...newWarehouse, address: e.target.value})}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Capacity (units)</Label>
+                  <Input
+                    type="number"
+                    min={1000}
+                    value={newWarehouse.capacity}
+                    onChange={(e) => setNewWarehouse({...newWarehouse, capacity: parseInt(e.target.value) || 5000})}
+                  />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label>Address</Label>
-                <Input
-                  placeholder="Enter full address"
-                  value={newWarehouse.address}
-                  onChange={(e) => setNewWarehouse({...newWarehouse, address: e.target.value})}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Capacity (units)</Label>
-                <Input
-                  type="number"
-                  min={1000}
-                  value={newWarehouse.capacity}
-                  onChange={(e) => setNewWarehouse({...newWarehouse, capacity: parseInt(e.target.value) || 5000})}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateWarehouse}>Create Warehouse</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreateWarehouse}>Create Warehouse</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       }
     >
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

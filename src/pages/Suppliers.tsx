@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useInventory } from '@/contexts/InventoryContext';
+import { Supplier } from '@/data/mockInventory';
 import {
   Table,
   TableBody,
@@ -21,16 +23,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Mail, Phone, Truck, Edit, Search } from 'lucide-react';
-import { mockSuppliers, Supplier } from '@/data/mockInventory';
+import { Plus, Mail, Phone, Truck, Edit, Search, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Suppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers);
+  const { suppliers: sheetSuppliers, loading, isConnected, refresh } = useInventory();
+  const [localSuppliers, setLocalSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState('');
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ name: '', email: '', phone: '', shippingDays: 5 });
+
+  // Combine sheet suppliers with local ones
+  const suppliers = [...sheetSuppliers, ...localSuppliers];
 
   const filteredSuppliers = suppliers.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -44,7 +49,7 @@ export default function Suppliers() {
       products: 0,
       activeOrders: 0,
     };
-    setSuppliers([...suppliers, supplier]);
+    setLocalSuppliers([...localSuppliers, supplier]);
     setIsCreateOpen(false);
     setNewSupplier({ name: '', email: '', phone: '', shippingDays: 5 });
     toast.success(`Supplier "${supplier.name}" added`);
@@ -52,7 +57,7 @@ export default function Suppliers() {
 
   const handleEdit = () => {
     if (editSupplier) {
-      setSuppliers(suppliers.map(s => s.id === editSupplier.id ? editSupplier : s));
+      setLocalSuppliers(localSuppliers.map(s => s.id === editSupplier.id ? editSupplier : s));
       setEditSupplier(null);
       toast.success('Supplier updated');
     }
@@ -61,41 +66,53 @@ export default function Suppliers() {
   return (
     <PageLayout
       title="Suppliers"
-      description="Manage supplier relationships and shipping times"
+      description={isConnected ? `${suppliers.length} suppliers from Google Sheets` : "Manage supplier relationships and shipping times"}
       actions={
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" />Add Supplier</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Supplier</DialogTitle>
-              <DialogDescription>Add a new supplier with shipping days.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label>Name</Label>
-                <Input value={newSupplier.name} onChange={(e) => setNewSupplier({...newSupplier, name: e.target.value})} />
+        <div className="flex gap-2">
+          {isConnected && (
+            <Button variant="outline" onClick={refresh} disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Refresh
+            </Button>
+          )}
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="h-4 w-4 mr-2" />Add Supplier</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Supplier</DialogTitle>
+                <DialogDescription>Add a new supplier with shipping days.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Name</Label>
+                  <Input value={newSupplier.name} onChange={(e) => setNewSupplier({...newSupplier, name: e.target.value})} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={newSupplier.email} onChange={(e) => setNewSupplier({...newSupplier, email: e.target.value})} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Phone</Label>
+                  <Input value={newSupplier.phone} onChange={(e) => setNewSupplier({...newSupplier, phone: e.target.value})} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Shipping Days</Label>
+                  <Input type="number" min={1} value={newSupplier.shippingDays} onChange={(e) => setNewSupplier({...newSupplier, shippingDays: parseInt(e.target.value) || 5})} />
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label>Email</Label>
-                <Input type="email" value={newSupplier.email} onChange={(e) => setNewSupplier({...newSupplier, email: e.target.value})} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Phone</Label>
-                <Input value={newSupplier.phone} onChange={(e) => setNewSupplier({...newSupplier, phone: e.target.value})} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Shipping Days</Label>
-                <Input type="number" min={1} value={newSupplier.shippingDays} onChange={(e) => setNewSupplier({...newSupplier, shippingDays: parseInt(e.target.value) || 5})} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreate}>Add Supplier</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreate}>Add Supplier</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       }
     >
       <div className="mb-4">
