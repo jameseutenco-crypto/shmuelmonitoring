@@ -1,12 +1,26 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { mockProducts, mockStats, mockSalesData, mockPurchaseOrders } from '@/data/mockInventory';
+import { GoogleSheetsConnect } from '@/components/dashboard/GoogleSheetsConnect';
+import { useGoogleSheetsInventory } from '@/hooks/useGoogleSheetsInventory';
+import { mockSalesData, mockPurchaseOrders } from '@/data/mockInventory';
 import { Package, AlertTriangle, PackageX, DollarSign, TrendingUp, Truck, ShoppingCart, BarChart3 } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, LineChart, Line, CartesianGrid, Legend } from 'recharts';
 
 const Index = () => {
+  const {
+    products,
+    stats,
+    loading,
+    error,
+    sheetUrl,
+    isConnected,
+    connectSheet,
+    disconnect,
+    refresh,
+  } = useGoogleSheetsInventory();
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -46,6 +60,19 @@ const Index = () => {
             </div>
           </div>
 
+          {/* Google Sheets Connection */}
+          <div className="max-w-md">
+            <GoogleSheetsConnect
+              isConnected={isConnected}
+              sheetUrl={sheetUrl}
+              loading={loading}
+              error={error}
+              onConnect={connectSheet}
+              onDisconnect={disconnect}
+              onRefresh={refresh}
+            />
+          </div>
+
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
@@ -80,24 +107,24 @@ const Index = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               title="Total Products"
-              value={mockStats.totalProducts}
+              value={stats.totalProducts}
               icon={Package}
             />
             <StatCard
               title="Low Stock Items"
-              value={mockStats.lowStockItems}
+              value={stats.lowStockItems}
               icon={AlertTriangle}
               variant="warning"
             />
             <StatCard
               title="Out of Stock"
-              value={mockStats.outOfStockItems}
+              value={stats.outOfStockItems}
               icon={PackageX}
               variant="critical"
             />
             <StatCard
               title="Stock Value"
-              value={formatCurrency(mockStats.totalStockValue)}
+              value={formatCurrency(stats.totalStockValue)}
               icon={BarChart3}
             />
           </div>
