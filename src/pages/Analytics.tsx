@@ -1,83 +1,98 @@
 import { PageLayout } from '@/components/layout/PageLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { useInventory } from '@/contexts/InventoryContext';
-import { TrendingUp, TrendingDown, DollarSign, Package, RotateCw, ShoppingCart, RefreshCw, Loader2 } from 'lucide-react';
+import { useDatabase } from '@/contexts/ExternalDatabaseContext';
+import { TrendingUp, DollarSign, Package, RotateCw, ShoppingCart, RefreshCw, Loader2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
 import { useMemo } from 'react';
 
 export default function Analytics() {
-  const { products, stats, loading, isConnected, refresh } = useInventory();
+  const { inventory, orders, stats, categories, isLoading, isConnected, refetch } = useDatabase();
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
 
-  // Generate stock trend data from products
+  // Generate stock trend data from inventory
   const stockTrendData = useMemo(() => {
     const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const baseValue = stats.totalStockValue;
+    const baseValue = stats.totalInventoryValue;
     return months.map((month, index) => ({
       month,
       value: Math.round(baseValue * (0.85 + (index * 0.03) + Math.random() * 0.1)),
     }));
-  }, [stats.totalStockValue]);
+  }, [stats.totalInventoryValue]);
 
-  // Generate category data from products
+  // Generate category data from inventory
   const categoryData = useMemo(() => {
-    const categories = products.reduce((acc, p) => {
-      const existing = acc.find(c => c.category === p.category);
-      if (existing) {
-        existing.value += p.currentStock * p.unitCost;
-        existing.items += 1;
-      } else {
-        acc.push({ category: p.category, value: p.currentStock * p.unitCost, items: 1 });
-      }
+    return categories.map(cat => ({
+      category: cat.name,
+      value: inventory
+        .filter(i => i.category === cat.name)
+        .reduce((sum, i) => sum + (i.currentStock * i.unitCost), 0),
+      items: cat.totalProducts,
+    })).sort((a, b) => b.value - a.value);
+  }, [categories, inventory]);
+
+  // Order status distribution
+  const orderStatusData = useMemo(() => {
+    const statusCounts = orders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1;
       return acc;
-    }, [] as { category: string; value: number; items: number }[]);
-    return categories.sort((a, b) => b.value - a.value);
-  }, [products]);
+    }, {} as Record<string, number>);
+
+    const colors = {
+      pending: 'hsl(var(--warning))',
+      approved: 'hsl(var(--primary))',
+      shipped: 'hsl(var(--chart-1))',
+      delivered: 'hsl(var(--success))',
+      cancelled: 'hsl(var(--destructive))',
+    };
+
+    return Object.entries(statusCounts).map(([status, count]) => ({
+      name: status.charAt(0).toUpperCase() + status.slice(1),
+      value: count,
+      fill: colors[status as keyof typeof colors] || 'hsl(var(--muted))',
+    }));
+  }, [orders]);
 
   return (
     <PageLayout
       title="Analytics"
-      description={isConnected ? "Stock trends from Google Sheets data" : "Stock trends and inventory insights"}
+      description={isConnected ? "Real-time analytics from Supabase" : "Stock trends and inventory insights"}
       actions={
-        isConnected && (
-          <Button variant="outline" onClick={refresh} disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Refresh Data
-          </Button>
-        )
+        <Button variant="outline" onClick={refetch} disabled={isLoading}>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Refresh Data
+        </Button>
       }
     >
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Stock Turnover"
-          value="4.2x"
-          icon={RotateCw}
-          trend={{ value: 8, isPositive: true }}
+          title="Total Products"
+          value={stats.totalProducts}
+          icon={Package}
         />
         <StatCard
-          title="Avg Order Value"
-          value="$1,840"
+          title="Total Orders"
+          value={stats.totalOrders}
           icon={ShoppingCart}
-          trend={{ value: 12, isPositive: true }}
+          variant="success"
         />
         <StatCard
           title="Stock Value"
-          value={formatCurrency(stats.totalStockValue)}
+          value={formatCurrency(stats.totalInventoryValue)}
           icon={DollarSign}
           variant="success"
         />
         <StatCard
-          title="Total SKUs"
-          value={stats.totalProducts}
-          icon={Package}
+          title="Total Customers"
+          value={stats.totalCustomers}
+          icon={Users}
         />
       </div>
 
@@ -137,6 +152,39 @@ export default function Analytics() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Order Status Chart */}
+      <div className="glass-card rounded-xl border border-border/50 p-6">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Order Status Distribution</h3>
+        <div className="h-[300px]">
+          {orderStatusData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={orderStatusData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
+                  {orderStatusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              No order data available
+            </div>
+          )}
         </div>
       </div>
     </PageLayout>

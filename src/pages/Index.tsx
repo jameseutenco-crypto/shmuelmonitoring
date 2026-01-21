@@ -1,25 +1,28 @@
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { GoogleSheetsConnect } from '@/components/dashboard/GoogleSheetsConnect';
-import { useInventory } from '@/contexts/InventoryContext';
-import { Package, AlertTriangle, PackageX, DollarSign, TrendingUp, Truck, ShoppingCart, BarChart3 } from 'lucide-react';
+import { useDatabase } from '@/contexts/ExternalDatabaseContext';
+import { Package, AlertTriangle, PackageX, DollarSign, TrendingUp, Truck, ShoppingCart, BarChart3, Users, RefreshCw, Database, CheckCircle, XCircle } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, LineChart, Line, CartesianGrid, Legend } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts';
 import { useMemo } from 'react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const Index = () => {
   const {
-    products,
+    inventory,
+    orders,
+    customers,
     stats,
-    loading,
+    alerts,
+    categories,
+    isLoading,
     error,
-    sheetUrl,
     isConnected,
-    connectSheet,
-    disconnect,
-    refresh,
-  } = useInventory();
+    refetch,
+  } = useDatabase();
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -30,44 +33,82 @@ const Index = () => {
     }).format(value);
   };
 
-  // Generate sales data from products
-  const salesData = useMemo(() => {
-    const baseData = [
-      { date: '2024-01-13', sales: 45, deliveries: 12, orders: 8, revenue: 12450 },
-      { date: '2024-01-14', sales: 52, deliveries: 15, orders: 10, revenue: 15230 },
-      { date: '2024-01-15', sales: 38, deliveries: 18, orders: 6, revenue: 9870 },
-      { date: '2024-01-16', sales: 65, deliveries: 22, orders: 12, revenue: 18900 },
-      { date: '2024-01-17', sales: 48, deliveries: 14, orders: 9, revenue: 14200 },
-      { date: '2024-01-18', sales: 72, deliveries: 25, orders: 15, revenue: 22100 },
-      { date: '2024-01-19', sales: 58, deliveries: 19, orders: 11, revenue: 16800 },
-    ];
-    
-    // If connected, scale values based on product count
-    if (isConnected && products.length > 0) {
-      const scale = products.length / 10;
-      return baseData.map(d => ({
-        ...d,
-        sales: Math.round(d.sales * scale),
-        deliveries: Math.round(d.deliveries * scale),
-        orders: Math.round(d.orders * scale),
-        revenue: Math.round(d.revenue * scale),
-      }));
-    }
-    
-    return baseData;
-  }, [isConnected, products.length]);
+  // Generate stock distribution by category
+  const categoryData = useMemo(() => {
+    return categories.map((cat, index) => ({
+      name: cat.name,
+      value: cat.totalStock,
+      products: cat.totalProducts,
+      fill: `hsl(var(--chart-${(index % 5) + 1}))`,
+    }));
+  }, [categories]);
 
-  const totalSales = salesData.reduce((acc, d) => acc + d.sales, 0);
-  const totalDeliveries = salesData.reduce((acc, d) => acc + d.deliveries, 0);
-  const totalRevenue = salesData.reduce((acc, d) => acc + d.revenue, 0);
-  const pendingOrders = stats.reorderNeeded;
+  // Generate order status distribution
+  const orderStatusData = useMemo(() => {
+    const statusCounts = orders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(statusCounts).map(([status, count], index) => ({
+      name: status.charAt(0).toUpperCase() + status.slice(1),
+      value: count,
+      fill: status === 'delivered' ? 'hsl(var(--success))' : 
+            status === 'pending' ? 'hsl(var(--warning))' :
+            status === 'cancelled' ? 'hsl(var(--destructive))' :
+            `hsl(var(--chart-${(index % 5) + 1}))`,
+    }));
+  }, [orders]);
+
+  // Stock level distribution
+  const stockLevelData = useMemo(() => {
+    const healthy = inventory.filter(i => i.currentStock > i.reorderPoint).length;
+    const low = inventory.filter(i => i.currentStock <= i.reorderPoint && i.currentStock > 0).length;
+    const outOfStock = inventory.filter(i => i.currentStock === 0).length;
+
+    return [
+      { name: 'Healthy', value: healthy, fill: 'hsl(var(--success))' },
+      { name: 'Low Stock', value: low, fill: 'hsl(var(--warning))' },
+      { name: 'Out of Stock', value: outOfStock, fill: 'hsl(var(--destructive))' },
+    ].filter(d => d.value > 0);
+  }, [inventory]);
+
+  // Top products by stock value
+  const topProductsByValue = useMemo(() => {
+    return [...inventory]
+      .map(item => ({
+        name: item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name,
+        value: item.currentStock * item.unitCost,
+        stock: item.currentStock,
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 7);
+  }, [inventory]);
 
   const chartConfig = {
-    sales: { label: 'Sales', color: 'hsl(var(--primary))' },
-    deliveries: { label: 'Deliveries', color: 'hsl(var(--success))' },
+    stock: { label: 'Stock', color: 'hsl(var(--primary))' },
+    value: { label: 'Value', color: 'hsl(var(--success))' },
     orders: { label: 'Orders', color: 'hsl(var(--warning))' },
-    revenue: { label: 'Revenue', color: 'hsl(var(--chart-1))' },
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Sidebar />
+        <main className="pl-64">
+          <Header />
+          <div className="p-6 space-y-6">
+            <Skeleton className="h-8 w-48" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="h-32 rounded-xl" />
+              ))}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -77,69 +118,63 @@ const Index = () => {
         <Header />
         
         <div className="p-6 space-y-6">
-          {/* Page Header */}
+          {/* Page Header with Connection Status */}
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
               <p className="text-muted-foreground mt-1">
-                {isConnected 
-                  ? `Connected to Google Sheets - ${products.length} products loaded`
-                  : 'Overview of sales, deliveries, and inventory performance'
-                }
+                Real-time inventory and order analytics from your Supabase database
               </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant={isConnected ? "default" : "destructive"} className="flex items-center gap-1.5">
+                {isConnected ? <CheckCircle className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+                {isConnected ? 'Connected to Database' : 'Connection Error'}
+              </Badge>
+              <Button variant="outline" size="sm" onClick={refetch} className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </Button>
             </div>
           </div>
 
-          {/* Google Sheets Connection */}
-          <div className="max-w-md">
-            <GoogleSheetsConnect
-              isConnected={isConnected}
-              sheetUrl={sheetUrl}
-              loading={loading}
-              error={error}
-              onConnect={connectSheet}
-              onDisconnect={disconnect}
-              onRefresh={refresh}
-            />
-          </div>
+          {/* Error Display */}
+          {error && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 text-destructive">
+              <p className="font-medium">Connection Error</p>
+              <p className="text-sm mt-1">{error}</p>
+            </div>
+          )}
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard
-              title="Total Sales (7 days)"
-              value={totalSales}
-              icon={TrendingUp}
-              trend={{ value: 12, isPositive: true }}
-            />
-            <StatCard
-              title="Total Deliveries"
-              value={totalDeliveries}
-              icon={Truck}
-              variant="success"
-              trend={{ value: 8, isPositive: true }}
-            />
-            <StatCard
-              title="Total Revenue"
-              value={formatCurrency(totalRevenue)}
-              icon={DollarSign}
-              variant="success"
-              trend={{ value: 15.2, isPositive: true }}
-            />
-            <StatCard
-              title="Reorder Needed"
-              value={pendingOrders}
-              icon={ShoppingCart}
-              variant="warning"
-            />
-          </div>
-
-          {/* Inventory Stats */}
+          {/* Primary Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               title="Total Products"
               value={stats.totalProducts}
               icon={Package}
+              trend={{ value: 0, isPositive: true }}
             />
+            <StatCard
+              title="Total Orders"
+              value={stats.totalOrders}
+              icon={ShoppingCart}
+              variant="success"
+            />
+            <StatCard
+              title="Total Customers"
+              value={stats.totalCustomers}
+              icon={Users}
+            />
+            <StatCard
+              title="Inventory Value"
+              value={formatCurrency(stats.totalInventoryValue)}
+              icon={DollarSign}
+              variant="success"
+            />
+          </div>
+
+          {/* Inventory Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               title="Low Stock Items"
               value={stats.lowStockItems}
@@ -148,86 +183,160 @@ const Index = () => {
             />
             <StatCard
               title="Out of Stock"
-              value={stats.outOfStockItems}
+              value={stats.outOfStock}
               icon={PackageX}
               variant="critical"
             />
             <StatCard
-              title="Stock Value"
-              value={formatCurrency(stats.totalStockValue)}
-              icon={BarChart3}
+              title="Pending Orders"
+              value={stats.pendingOrders}
+              icon={TrendingUp}
+              variant="warning"
+            />
+            <StatCard
+              title="Delivered Orders"
+              value={stats.deliveredOrders}
+              icon={Truck}
+              variant="success"
             />
           </div>
 
           {/* Charts Row 1 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Sales Trend Chart */}
+            {/* Stock Level Distribution */}
             <div className="glass-card rounded-xl border border-border/50 p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Sales Trend</h3>
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <AreaChart data={salesData}>
-                  <defs>
-                    <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" fill="url(#salesGradient)" strokeWidth={2} />
-                </AreaChart>
-              </ChartContainer>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Stock Level Distribution</h3>
+              {stockLevelData.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={stockLevelData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {stockLevelData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No inventory data available
+                </div>
+              )}
             </div>
 
-            {/* Deliveries Chart */}
+            {/* Order Status Distribution */}
             <div className="glass-card rounded-xl border border-border/50 p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Deliveries</h3>
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <BarChart data={salesData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="deliveries" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Order Status</h3>
+              {orderStatusData.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={orderStatusData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ${value}`}
+                      >
+                        {orderStatusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No order data available
+                </div>
+              )}
             </div>
           </div>
 
           {/* Charts Row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Revenue Chart */}
+            {/* Stock by Category */}
             <div className="glass-card rounded-xl border border-border/50 p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Revenue Trend</h3>
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <LineChart data={salesData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                  <ChartTooltip content={<ChartTooltipContent formatter={(value) => formatCurrency(Number(value))} />} />
-                  <Line type="monotone" dataKey="revenue" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ fill: 'hsl(var(--chart-1))' }} />
-                </LineChart>
-              </ChartContainer>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Stock by Category</h3>
+              {categoryData.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                  <BarChart data={categoryData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Total Stock" />
+                  </BarChart>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No category data available
+                </div>
+              )}
             </div>
 
-            {/* Orders vs Deliveries Comparison */}
+            {/* Top Products by Value */}
             <div className="glass-card rounded-xl border border-border/50 p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Orders vs Deliveries</h3>
-              <ChartContainer config={chartConfig} className="h-[300px] w-full">
-                <BarChart data={salesData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => v.split('-')[2]} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend />
-                  <Bar dataKey="orders" fill="hsl(var(--warning))" radius={[4, 4, 0, 0]} name="Orders" />
-                  <Bar dataKey="deliveries" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Deliveries" />
-                </BarChart>
-              </ChartContainer>
+              <h3 className="text-lg font-semibold text-foreground mb-4">Top Products by Stock Value</h3>
+              {topProductsByValue.length > 0 ? (
+                <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                  <BarChart data={topProductsByValue} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} width={100} />
+                    <ChartTooltip content={<ChartTooltipContent formatter={(value) => formatCurrency(Number(value))} />} />
+                    <Bar dataKey="value" fill="hsl(var(--success))" radius={[0, 4, 4, 0]} name="Stock Value" />
+                  </BarChart>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                  No product data available
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Low Stock Alerts Preview */}
+          {alerts.length > 0 && (
+            <div className="glass-card rounded-xl border border-border/50 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-foreground">Low Stock Alerts</h3>
+                <Badge variant="destructive">{alerts.length} items need attention</Badge>
+              </div>
+              <div className="space-y-3 max-h-[200px] overflow-y-auto">
+                {alerts.slice(0, 5).map((alert) => (
+                  <div key={alert.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div>
+                      <p className="font-medium text-foreground">{alert.productName}</p>
+                      <p className="text-sm text-muted-foreground">{alert.category} • {alert.supplier}</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={alert.severity === 'critical' ? 'destructive' : alert.severity === 'high' ? 'secondary' : 'outline'}>
+                        {alert.currentStock} / {alert.reorderPoint}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

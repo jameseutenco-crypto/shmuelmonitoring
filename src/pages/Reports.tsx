@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useInventory } from '@/contexts/InventoryContext';
+import { useDatabase } from '@/contexts/ExternalDatabaseContext';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { FileBarChart, Download, Calendar, TrendingUp, Package, DollarSign, Clock, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
+import { FileBarChart, Download, Calendar, TrendingUp, Package, DollarSign, Clock, CheckCircle, Loader2, RefreshCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Report {
@@ -34,14 +34,15 @@ interface Report {
 }
 
 const initialReportTypes: Report[] = [
-  { id: 1, name: 'Inventory Valuation', description: 'Complete stock value report by category and warehouse', icon: DollarSign, lastRun: '2 hours ago', status: 'ready' },
+  { id: 1, name: 'Inventory Valuation', description: 'Complete stock value report by category', icon: DollarSign, lastRun: '2 hours ago', status: 'ready' },
   { id: 2, name: 'Stock Movement', description: 'Track inbound and outbound inventory changes', icon: TrendingUp, lastRun: '1 day ago', status: 'ready' },
   { id: 3, name: 'Low Stock Report', description: 'Items below reorder point or out of stock', icon: Package, lastRun: '3 hours ago', status: 'ready' },
-  { id: 4, name: 'Purchase Order Summary', description: 'Monthly PO analysis by supplier and status', icon: FileBarChart, lastRun: '1 week ago', status: 'ready' },
+  { id: 4, name: 'Order Summary', description: 'Order analysis by supplier and status', icon: FileBarChart, lastRun: '1 week ago', status: 'ready' },
+  { id: 5, name: 'Customer Report', description: 'Customer list and contact information', icon: Users, lastRun: 'Never', status: 'ready' },
 ];
 
 export default function Reports() {
-  const { products, stats, alerts, isConnected, loading, refresh } = useInventory();
+  const { inventory, orders, customers, stats, alerts, isConnected, isLoading, refetch } = useDatabase();
   const [reports, setReports] = useState<Report[]>(initialReportTypes);
   const [scheduleDialog, setScheduleDialog] = useState<Report | null>(null);
   const [scheduleFrequency, setScheduleFrequency] = useState('daily');
@@ -52,25 +53,35 @@ export default function Reports() {
       r.id === reportId ? { ...r, status: 'generating' as const } : r
     ));
 
-    // Generate actual report data based on connected sheet
+    // Generate actual report data based on connected database
     setTimeout(() => {
       const report = reports.find(r => r.id === reportId);
       let csvContent = '';
       
       if (report?.name === 'Inventory Valuation') {
-        csvContent = 'SKU,Name,Category,Stock,Unit Cost,Total Value,Warehouse\n';
-        products.forEach(p => {
-          csvContent += `${p.sku},${p.name},${p.category},${p.currentStock},${p.unitCost},${(p.currentStock * p.unitCost).toFixed(2)},${p.warehouse}\n`;
+        csvContent = 'SKU,Name,Category,Stock,Unit Cost,Total Value,Supplier\n';
+        inventory.forEach(p => {
+          csvContent += `${p.sku},${p.name},${p.category},${p.currentStock},${p.unitCost},${(p.currentStock * p.unitCost).toFixed(2)},${p.supplier}\n`;
         });
       } else if (report?.name === 'Low Stock Report') {
-        csvContent = 'SKU,Name,Current Stock,Reorder Point,Status\n';
-        products.filter(p => p.currentStock <= p.reorderPoint).forEach(p => {
+        csvContent = 'SKU,Name,Current Stock,Reorder Point,Status,Supplier\n';
+        inventory.filter(p => p.currentStock <= p.reorderPoint).forEach(p => {
           const status = p.currentStock === 0 ? 'Out of Stock' : 'Low Stock';
-          csvContent += `${p.sku},${p.name},${p.currentStock},${p.reorderPoint},${status}\n`;
+          csvContent += `${p.sku},${p.name},${p.currentStock},${p.reorderPoint},${status},${p.supplier}\n`;
+        });
+      } else if (report?.name === 'Order Summary') {
+        csvContent = 'Order ID,Date,Status,Supplier,Total,Expected Delivery\n';
+        orders.forEach(o => {
+          csvContent += `${o.id},${o.orderDate},${o.status},${o.supplier},${o.total},${o.expectedDelivery}\n`;
+        });
+      } else if (report?.name === 'Customer Report') {
+        csvContent = 'ID,Name,Email,Phone,Address\n';
+        customers.forEach(c => {
+          csvContent += `${c.id},${c.name},${c.email},${c.phone},${c.address}\n`;
         });
       } else {
         csvContent = 'Product,SKU,Category,Stock,Value\n';
-        products.forEach(p => {
+        inventory.forEach(p => {
           csvContent += `${p.name},${p.sku},${p.category},${p.currentStock},${(p.currentStock * p.unitCost).toFixed(2)}\n`;
         });
       }
@@ -89,7 +100,7 @@ export default function Reports() {
       setReports(reports.map(r => 
         r.id === reportId ? { ...r, status: 'ready' as const, lastRun: 'Just now' } : r
       ));
-      toast.success(`Report generated with ${products.length} products from ${isConnected ? 'Google Sheets' : 'mock'} data!`);
+      toast.success(`Report generated with data from ${isConnected ? 'Supabase' : 'local'} database!`);
     }, 2000);
   };
 
@@ -140,46 +151,45 @@ export default function Reports() {
     }
   };
 
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
+
   return (
     <PageLayout
       title="Reports"
-      description={isConnected ? `Generate reports from Google Sheets data (${products.length} products)` : "Generate and download inventory reports"}
+      description={isConnected ? `Generate reports from Supabase (${inventory.length} products, ${orders.length} orders, ${customers.length} customers)` : "Generate and download inventory reports"}
       actions={
-        isConnected && (
-          <Button variant="outline" onClick={refresh} disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Refresh Data
-          </Button>
-        )
+        <Button variant="outline" onClick={refetch} disabled={isLoading}>
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Refresh Data
+        </Button>
       }
     >
       {/* Quick Stats */}
-      {isConnected && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="glass-card rounded-xl border border-border/50 p-4">
-            <p className="text-sm text-muted-foreground">Total Products</p>
-            <p className="text-2xl font-bold text-foreground">{stats.totalProducts}</p>
-          </div>
-          <div className="glass-card rounded-xl border border-border/50 p-4">
-            <p className="text-sm text-muted-foreground">Low Stock Items</p>
-            <p className="text-2xl font-bold text-warning">{stats.lowStockItems}</p>
-          </div>
-          <div className="glass-card rounded-xl border border-border/50 p-4">
-            <p className="text-sm text-muted-foreground">Out of Stock</p>
-            <p className="text-2xl font-bold text-destructive">{stats.outOfStockItems}</p>
-          </div>
-          <div className="glass-card rounded-xl border border-border/50 p-4">
-            <p className="text-sm text-muted-foreground">Total Value</p>
-            <p className="text-2xl font-bold text-success">
-              ${stats.totalStockValue.toLocaleString()}
-            </p>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="glass-card rounded-xl border border-border/50 p-4">
+          <p className="text-sm text-muted-foreground">Total Products</p>
+          <p className="text-2xl font-bold text-foreground">{stats.totalProducts}</p>
         </div>
-      )}
+        <div className="glass-card rounded-xl border border-border/50 p-4">
+          <p className="text-sm text-muted-foreground">Low Stock Items</p>
+          <p className="text-2xl font-bold text-warning">{stats.lowStockItems}</p>
+        </div>
+        <div className="glass-card rounded-xl border border-border/50 p-4">
+          <p className="text-sm text-muted-foreground">Total Orders</p>
+          <p className="text-2xl font-bold text-primary">{stats.totalOrders}</p>
+        </div>
+        <div className="glass-card rounded-xl border border-border/50 p-4">
+          <p className="text-sm text-muted-foreground">Inventory Value</p>
+          <p className="text-2xl font-bold text-success">
+            {formatCurrency(stats.totalInventoryValue)}
+          </p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {reports.map((report) => {
