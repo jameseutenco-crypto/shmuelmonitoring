@@ -5,8 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { useInventory } from '@/contexts/InventoryContext';
-import { Warehouse } from '@/data/mockInventory';
+import { useDatabase } from '@/contexts/ExternalDatabaseContext';
 import {
   Dialog,
   DialogContent,
@@ -26,9 +25,27 @@ import {
 import { Plus, Building2, Package, DollarSign, MapPin, Settings, Boxes, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+interface Warehouse {
+  id: string;
+  name: string;
+  address: string;
+  capacity: number;
+  usedCapacity: number;
+  status: 'active' | 'inactive' | 'maintenance';
+}
+
 export default function Warehouses() {
-  const { warehouses: sheetWarehouses, products, loading, isConnected, refresh } = useInventory();
-  const [localWarehouses, setLocalWarehouses] = useState<Warehouse[]>([]);
+  const { inventory, categories, isLoading, isConnected, refetch } = useDatabase();
+  const [localWarehouses, setLocalWarehouses] = useState<Warehouse[]>([
+    {
+      id: 'w1',
+      name: 'Main Warehouse',
+      address: '123 Industrial Blvd, City',
+      capacity: 10000,
+      usedCapacity: 0,
+      status: 'active',
+    }
+  ]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [newWarehouse, setNewWarehouse] = useState({
@@ -37,15 +54,23 @@ export default function Warehouses() {
     capacity: 5000,
   });
 
-  // Combine sheet warehouses with local ones
-  const warehouses = [...sheetWarehouses, ...localWarehouses];
-
+  // Calculate warehouse stats from inventory
   const getWarehouseStats = (warehouseName: string) => {
-    const warehouseProducts = products.filter(p => p.warehouse === warehouseName);
+    // Since the inventory doesn't have warehouse field, use all products for Main Warehouse
+    const warehouseProducts = warehouseName === 'Main Warehouse' ? inventory : [];
     const totalItems = warehouseProducts.reduce((acc, p) => acc + p.currentStock, 0);
     const totalValue = warehouseProducts.reduce((acc, p) => acc + p.currentStock * p.unitCost, 0);
     return { products: warehouseProducts.length, totalItems, totalValue };
   };
+
+  // Update warehouse used capacity based on inventory
+  const warehouses = localWarehouses.map(w => {
+    if (w.name === 'Main Warehouse') {
+      const totalStock = inventory.reduce((acc, p) => acc + p.currentStock, 0);
+      return { ...w, usedCapacity: totalStock };
+    }
+    return w;
+  });
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
@@ -57,7 +82,7 @@ export default function Warehouses() {
     }
 
     const warehouse: Warehouse = {
-      id: `w${warehouses.length + 1}`,
+      id: `w${localWarehouses.length + 1}`,
       name: newWarehouse.name,
       address: newWarehouse.address,
       capacity: newWarehouse.capacity,
@@ -72,7 +97,6 @@ export default function Warehouses() {
   };
 
   const handleStatusChange = (warehouseId: string, status: Warehouse['status']) => {
-    // Update local warehouses
     setLocalWarehouses(localWarehouses.map(w => 
       w.id === warehouseId ? { ...w, status } : w
     ));
@@ -93,19 +117,17 @@ export default function Warehouses() {
   return (
     <PageLayout
       title="Warehouses"
-      description={isConnected ? `${warehouses.length} warehouses from Google Sheets` : "Manage warehouse locations and inventory"}
+      description={isConnected ? `Warehouse management with ${inventory.length} products` : "Manage warehouse locations and inventory"}
       actions={
         <div className="flex gap-2">
-          {isConnected && (
-            <Button variant="outline" onClick={refresh} disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              Refresh
-            </Button>
-          )}
+          <Button variant="outline" onClick={refetch} disabled={isLoading}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh
+          </Button>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -124,7 +146,7 @@ export default function Warehouses() {
                 <div className="grid gap-2">
                   <Label>Warehouse Name</Label>
                   <Input
-                    placeholder="e.g., Warehouse D"
+                    placeholder="e.g., Warehouse B"
                     value={newWarehouse.name}
                     onChange={(e) => setNewWarehouse({...newWarehouse, name: e.target.value})}
                   />
@@ -159,7 +181,7 @@ export default function Warehouses() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {warehouses.map((warehouse) => {
           const stats = getWarehouseStats(warehouse.name);
-          const capacityPercent = (warehouse.usedCapacity / warehouse.capacity) * 100;
+          const capacityPercent = Math.min((warehouse.usedCapacity / warehouse.capacity) * 100, 100);
           
           return (
             <div key={warehouse.id} className="glass-card rounded-xl border border-border/50 p-6 hover:border-primary/30 transition-colors">

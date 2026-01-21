@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { useInventory } from '@/contexts/InventoryContext';
-import { StockAlert } from '@/types/inventory';
+import { useDatabase } from '@/contexts/ExternalDatabaseContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -30,14 +29,6 @@ import {
   Trash2, 
   Bell, 
   Truck,
-  Headphones,
-  Keyboard,
-  Mouse,
-  Monitor,
-  Cable,
-  Armchair,
-  Camera,
-  Laptop,
   Package,
   RefreshCw,
   Loader2
@@ -45,70 +36,57 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const alertTypeConfig = {
-  out_of_stock: {
+interface Alert {
+  id: string;
+  productId: string;
+  productName: string;
+  currentStock: number;
+  reorderPoint: number;
+  minStock: number;
+  severity: 'critical' | 'high' | 'medium';
+  category: string;
+  supplier: string;
+}
+
+const severityConfig = {
+  critical: {
     icon: PackageX,
-    label: 'Out of Stock',
+    label: 'Critical',
     bgClass: 'bg-destructive/10 border-destructive/30',
     iconClass: 'text-destructive',
     badgeClass: 'bg-destructive/20 text-destructive border-destructive/30',
   },
-  low_stock: {
+  high: {
     icon: AlertTriangle,
-    label: 'Low Stock',
+    label: 'High',
     bgClass: 'bg-warning/10 border-warning/30',
     iconClass: 'text-warning',
     badgeClass: 'bg-warning/20 text-warning border-warning/30',
   },
-  reorder_needed: {
+  medium: {
     icon: ShoppingCart,
-    label: 'Reorder Needed',
+    label: 'Medium',
     bgClass: 'bg-primary/10 border-primary/30',
     iconClass: 'text-primary',
     badgeClass: 'bg-primary/20 text-primary border-primary/30',
   },
 };
 
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Headphones,
-  HeadphonesIcon: Headphones,
-  Keyboard,
-  Mouse,
-  Monitor,
-  Cable,
-  Armchair,
-  Table: Package,
-  Camera,
-  Laptop,
-};
-
 export default function Alerts() {
-  const { alerts: sheetAlerts, products, suppliers, loading, isConnected, refresh } = useInventory();
-  const [localAlerts, setLocalAlerts] = useState<StockAlert[]>([]);
+  const { alerts: dbAlerts, inventory, suppliers, isLoading, isConnected, refetch } = useDatabase();
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [reorderDialog, setReorderDialog] = useState<StockAlert | null>(null);
+  const [reorderDialog, setReorderDialog] = useState<Alert | null>(null);
 
-  // Combine sheet alerts with local state, filtering out dismissed ones
-  const alerts = sheetAlerts.filter(a => !dismissedIds.has(a.id));
+  // Filter out dismissed alerts
+  const alerts = dbAlerts.filter(a => !dismissedIds.has(a.id));
 
   const filteredAlerts = alerts.filter(alert => {
-    const matchesType = typeFilter === 'all' || alert.type === typeFilter;
-    const matchesSearch = alert.productName.toLowerCase().includes(search.toLowerCase()) ||
-      alert.sku.toLowerCase().includes(search.toLowerCase());
-    return matchesType && matchesSearch;
+    const matchesSeverity = severityFilter === 'all' || alert.severity === severityFilter;
+    const matchesSearch = alert.productName.toLowerCase().includes(search.toLowerCase());
+    return matchesSeverity && matchesSearch;
   });
-
-  const timeAgo = (timestamp: string) => {
-    const now = new Date();
-    const alertTime = new Date(timestamp);
-    const diffMs = now.getTime() - alertTime.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffHours / 24)}d ago`;
-  };
 
   const handleDismiss = (alertId: string, productName: string) => {
     setDismissedIds(prev => new Set([...prev, alertId]));
@@ -121,20 +99,19 @@ export default function Alerts() {
     toast.success('All alerts cleared');
   };
 
-  const handleReorder = (alert: StockAlert) => {
+  const handleReorder = (alert: Alert) => {
     setReorderDialog(alert);
   };
 
   const confirmReorder = () => {
     if (reorderDialog) {
-      const product = products.find(p => p.id === reorderDialog.productId);
-      const supplier = suppliers.find(s => s.name === product?.supplier);
+      const supplier = suppliers.find(s => s.name === reorderDialog.supplier);
       
       setDismissedIds(prev => new Set([...prev, reorderDialog.id]));
       toast.success(
         `Reorder placed for ${reorderDialog.productName}`,
         { 
-          description: `Expected delivery in ${supplier?.shippingDays || 7} days from ${supplier?.name || 'supplier'}`,
+          description: `Supplier: ${supplier?.name || reorderDialog.supplier}`,
           duration: 5000 
         }
       );
@@ -142,34 +119,20 @@ export default function Alerts() {
     }
   };
 
-  const getSupplierInfo = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    const supplier = suppliers.find(s => s.name === product?.supplier);
-    return { product, supplier };
-  };
-
-  const getProductIcon = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (!product) return Package;
-    return iconMap[product.icon] || Package;
-  };
-
   return (
     <PageLayout
       title="Alerts"
-      description={isConnected ? `${alerts.length} active alerts from Google Sheets` : "Stock alerts and notifications"}
+      description={isConnected ? `${alerts.length} active alerts from Supabase` : "Stock alerts and notifications"}
       actions={
         <div className="flex gap-2">
-          {isConnected && (
-            <Button variant="outline" onClick={refresh} disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              Refresh
-            </Button>
-          )}
+          <Button variant="outline" onClick={refetch} disabled={isLoading}>
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Refresh
+          </Button>
           <Button variant="outline" onClick={handleMarkAllRead} disabled={alerts.length === 0}>
             <CheckCircle className="h-4 w-4 mr-2" />
             Clear All
@@ -188,16 +151,16 @@ export default function Alerts() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
+        <Select value={severityFilter} onValueChange={setSeverityFilter}>
           <SelectTrigger className="w-[180px] bg-secondary border-border">
             <Filter className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Filter by type" />
+            <SelectValue placeholder="Filter by severity" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Alerts</SelectItem>
-            <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-            <SelectItem value="low_stock">Low Stock</SelectItem>
-            <SelectItem value="reorder_needed">Reorder Needed</SelectItem>
+            <SelectItem value="critical">Critical</SelectItem>
+            <SelectItem value="high">High</SelectItem>
+            <SelectItem value="medium">Medium</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -209,9 +172,9 @@ export default function Alerts() {
             <PackageX className="h-5 w-5 text-destructive" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {alerts.filter(a => a.type === 'out_of_stock').length}
+                {alerts.filter(a => a.severity === 'critical').length}
               </p>
-              <p className="text-sm text-muted-foreground">Out of Stock</p>
+              <p className="text-sm text-muted-foreground">Critical (Out of Stock)</p>
             </div>
           </div>
         </div>
@@ -220,9 +183,9 @@ export default function Alerts() {
             <AlertTriangle className="h-5 w-5 text-warning" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {alerts.filter(a => a.type === 'low_stock').length}
+                {alerts.filter(a => a.severity === 'high').length}
               </p>
-              <p className="text-sm text-muted-foreground">Low Stock</p>
+              <p className="text-sm text-muted-foreground">High Priority</p>
             </div>
           </div>
         </div>
@@ -231,9 +194,9 @@ export default function Alerts() {
             <ShoppingCart className="h-5 w-5 text-primary" />
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {alerts.filter(a => a.type === 'reorder_needed').length}
+                {alerts.filter(a => a.severity === 'medium').length}
               </p>
-              <p className="text-sm text-muted-foreground">Reorder Needed</p>
+              <p className="text-sm text-muted-foreground">Medium Priority</p>
             </div>
           </div>
         </div>
@@ -242,10 +205,8 @@ export default function Alerts() {
       {/* Alerts List */}
       <div className="space-y-3">
         {filteredAlerts.map((alert) => {
-          const config = alertTypeConfig[alert.type];
+          const config = severityConfig[alert.severity];
           const Icon = config.icon;
-          const { product, supplier } = getSupplierInfo(alert.productId);
-          const ProductIcon = getProductIcon(alert.productId);
 
           return (
             <div
@@ -257,7 +218,7 @@ export default function Alerts() {
             >
               <div className="flex items-start gap-4">
                 <div className="h-12 w-12 rounded-lg bg-background/80 flex items-center justify-center border">
-                  <ProductIcon className="h-6 w-6 text-foreground" />
+                  <Package className="h-6 w-6 text-foreground" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
@@ -265,18 +226,15 @@ export default function Alerts() {
                       <Icon className="h-3 w-3 mr-1" />
                       {config.label}
                     </Badge>
-                    <span className="text-sm text-muted-foreground">{timeAgo(alert.timestamp)}</span>
                   </div>
                   <h3 className="text-lg font-semibold text-foreground">{alert.productName}</h3>
                   <p className="text-muted-foreground mt-1">
-                    SKU: {alert.sku} • Current Stock: <span className="font-semibold text-foreground">{alert.currentStock}</span> • Reorder Point: {alert.reorderPoint}
+                    {alert.category} • Current Stock: <span className="font-semibold text-foreground">{alert.currentStock}</span> • Reorder Point: {alert.reorderPoint}
                   </p>
-                  {supplier && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                      <Truck className="h-3 w-3" />
-                      Supplier: {supplier.name} ({supplier.shippingDays} days shipping)
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                    <Truck className="h-3 w-3" />
+                    Supplier: {alert.supplier}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button 
@@ -319,17 +277,12 @@ export default function Alerts() {
             <div className="space-y-4 py-4">
               <div className="p-4 bg-secondary rounded-lg">
                 <div className="flex items-center gap-3 mb-2">
-                  {(() => {
-                    const ProductIcon = getProductIcon(reorderDialog.productId);
-                    return (
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <ProductIcon className="h-5 w-5 text-primary" />
-                      </div>
-                    );
-                  })()}
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Package className="h-5 w-5 text-primary" />
+                  </div>
                   <div>
                     <h4 className="font-semibold">{reorderDialog.productName}</h4>
-                    <p className="text-sm text-muted-foreground">SKU: {reorderDialog.sku}</p>
+                    <p className="text-sm text-muted-foreground">{reorderDialog.category}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center gap-4 text-sm">
@@ -337,18 +290,10 @@ export default function Alerts() {
                   <span>Reorder Point: <strong>{reorderDialog.reorderPoint}</strong></span>
                 </div>
               </div>
-              {(() => {
-                const { supplier } = getSupplierInfo(reorderDialog.productId);
-                return supplier && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Truck className="h-4 w-4 text-primary" />
-                    <span>Supplier: {supplier.name}</span>
-                    <Badge variant="outline">
-                      {supplier.shippingDays} days delivery
-                    </Badge>
-                  </div>
-                );
-              })()}
+              <div className="flex items-center gap-2 text-sm">
+                <Truck className="h-4 w-4 text-primary" />
+                <span>Supplier: {reorderDialog.supplier}</span>
+              </div>
             </div>
           )}
           <DialogFooter>

@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { InventoryProvider } from "@/contexts/InventoryContext";
+import { DatabaseProvider } from "@/contexts/ExternalDatabaseContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Inventory from "./pages/Inventory";
@@ -52,7 +52,7 @@ function AppRoutes() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <InventoryProvider>
+      <DatabaseProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
@@ -60,7 +60,7 @@ const App = () => (
             <AppRoutes />
           </BrowserRouter>
         </TooltipProvider>
-      </InventoryProvider>
+      </DatabaseProvider>
     </AuthProvider>
   </QueryClientProvider>
 );
