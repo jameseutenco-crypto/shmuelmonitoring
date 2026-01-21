@@ -444,7 +444,10 @@ export default function PurchaseOrders() {
                                 </div>
                               </TabsContent>
                               <TabsContent value="tracking" className="mt-4">
-                                <OrderTrackingTimeline events={generateTrackingEvents(order)} />
+                                <OrderTrackingTimeline 
+                                  trackingNumber={order.trackingNumber || ''} 
+                                  events={generateTrackingEvents(order.orderDate, order.status, order.supplier, order.expectedDelivery, order.actualDelivery)} 
+                                />
                               </TabsContent>
                             </Tabs>
                           </DialogContent>
@@ -486,7 +489,10 @@ export default function PurchaseOrders() {
             </DialogDescription>
           </DialogHeader>
           {trackingOrder && (
-            <OrderTrackingTimeline events={generateTrackingEvents(trackingOrder)} />
+            <OrderTrackingTimeline 
+              trackingNumber={trackingOrder.trackingNumber || ''} 
+              events={generateTrackingEvents(trackingOrder.orderDate, trackingOrder.status, trackingOrder.supplier, trackingOrder.expectedDelivery, trackingOrder.actualDelivery)} 
+            />
           )}
         </DialogContent>
       </Dialog>
